@@ -114,13 +114,13 @@ impl Slice {
     fn refs(&self) -> PyResult<usize> {
         Ok(self.slice.remaining_references())
     }
-    fn r_peek(&self, i: usize) -> PyResult<Cell> {
-        self.slice.reference(i)
+    fn r(&mut self) -> PyResult<Cell> {
+        self.slice.checked_drain_reference()
             .map(|cell| Cell { cell })
             .map_err(runtime_err)
     }
-    fn r_drain(&mut self) -> PyResult<Cell> {
-        self.slice.checked_drain_reference()
+    fn r_peek(&self, i: usize) -> PyResult<Cell> {
+        self.slice.reference(i)
             .map(|cell| Cell { cell })
             .map_err(runtime_err)
     }
@@ -154,12 +154,12 @@ impl Builder {
     fn new() -> Self {
         Self::default()
     }
-    fn append_slice(&mut self, slice: Slice) -> PyResult<Self> {
-        self.builder.checked_append_references_and_data(&slice.slice)
-            .map(|builder| Builder { builder: builder.clone() })
-            .map_err(runtime_err)
+    fn s(mut slf: PyRefMut<Self>, slice: Slice) -> PyResult<PyRefMut<Self>> {
+        slf.builder.checked_append_references_and_data(&slice.slice)
+            .map_err(runtime_err)?;
+        Ok(slf)
     }
-    fn i(&mut self, bits: usize, integer: BigInt) -> PyResult<Self> {
+    fn i(mut slf: PyRefMut<Self>, bits: usize, integer: BigInt) -> PyResult<PyRefMut<Self>> {
         if bits == 0 {
             return err!("bits must be greater than 0")
         }
@@ -168,23 +168,27 @@ impl Builder {
         }else {
             unsigned_int_serialize(integer, bits)?
         };
-        self.builder.append_raw(&bytes, bits)
-            .map(|builder| Builder { builder: builder.clone() })
-            .map_err(runtime_err)
+        slf.builder.append_raw(&bytes, bits).map_err(runtime_err)?;
+        Ok(slf)
     }
-    fn x(&mut self, bitstring: String) -> PyResult<Self> {
+    fn x(mut slf: PyRefMut<Self>, bitstring: String) -> PyResult<PyRefMut<Self>> {
         let slice = SliceData::from_string(&bitstring)
             .map_err(runtime_err)?;
-        self.builder.checked_append_references_and_data(&slice)
-            .map(|builder| Builder { builder: builder.clone() })
-            .map_err(runtime_err)
+        slf.builder.checked_append_references_and_data(&slice)
+            .map_err(runtime_err)?;
+        Ok(slf)
+    }
+    fn r(mut slf: PyRefMut<Self>, cell: Cell) -> PyResult<PyRefMut<Self>> {
+        slf.builder.checked_append_reference(cell.cell)
+            .map_err(runtime_err)?;
+        Ok(slf)
     }
     fn slice(&self) -> PyResult<Slice> {
         SliceData::load_builder(self.builder.clone())
             .map(|slice| Slice { slice })
             .map_err(runtime_err)
     }
-    fn serialize(&self) -> PyResult<Cell> {
+    fn finalize(&self) -> PyResult<Cell> {
         self.builder.clone().into_cell()
             .map(|cell| Cell { cell })
             .map_err(runtime_err)
@@ -229,13 +233,21 @@ impl Dictionary {
             .map_err(runtime_err)?;
         Ok(self.clone())
     }
-    fn serialize(&self) -> PyResult<Cell> {
-        let mut b = BuilderData::new();
-        self.map.write_hashmap_data(&mut b)
+    fn serialize(&self) -> PyResult<Builder> {
+        let mut builder = BuilderData::new();
+        self.map.write_hashmap_data(&mut builder)
             .map_err(runtime_err)?;
-        b.into_cell()
-            .map(|cell| Cell { cell })
-            .map_err(runtime_err)
+        Ok(Builder { builder })
+    }
+    #[staticmethod]
+    fn deserialize(bits: usize, slice: &mut Slice) -> PyResult<Self> {
+        let map = if slice.slice.get_bit(0).map_err(runtime_err)? {
+            let cell = slice.slice.checked_drain_reference().map_err(runtime_err)?;
+            HashmapE::with_hashmap(bits, Some(cell))
+        } else {
+            HashmapE::with_hashmap(bits, None)
+        };
+        Ok(Dictionary { map })
     }
     fn __len__(&self) -> PyResult<usize> {
         self.map.count(usize::MAX).map_err(runtime_err)

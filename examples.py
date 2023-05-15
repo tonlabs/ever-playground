@@ -2,7 +2,12 @@ from ever_playground import Cell as C
 from ever_playground import Builder as B
 from ever_playground import Slice as S
 from ever_playground import Dictionary as D
-from ever_playground import runvm, assemble, parse_smc_addr
+from ever_playground import StateInit, runvm, assemble, parse_smc_addr
+
+b = B()
+b.i(8, 0x12).i(8, 0x34)
+s = S(b.finalize())
+assert(s.u(16) == 0x1234)
 
 val1 = -123
 val2 = 0xdeadbeefcafebabe
@@ -13,7 +18,7 @@ assert(s.u(64) == val2)
 assert(s.is_empty())
 
 val3 = 0xffffffff
-s = S(B().i(32, val3).serialize())
+s = S(B().i(32, val3).finalize())
 assert(s.i(23) == -1)
 assert(len(s) == 9)
 
@@ -35,14 +40,16 @@ dict = dict.add_kv_slice(288, s2)
 dict.add_kv_slice(288, s3)
 #dict = D(288).add_kv_slice(288, s1).add_kv_slice(288, s2).add_kv_slice(288, s3)
 
-assert(dict.get(s1) == S(B().serialize()))
+assert(dict.get(s1) == S(B().finalize()))
 assert(dict.get(B().i(288, 0).slice()) == None)
 
-dict_cell1 = dict.serialize()
+dict_cell1 = dict.serialize().finalize()
 #print(dict_cell1)
 
+dict = D.deserialize(288, S(dict_cell1))
+
 empty = C("")
-assert(empty == B().serialize())
+assert(empty == B().finalize())
 assert(empty.repr_hash() == 0x96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7)
 
 c = \
@@ -75,6 +82,17 @@ res = runvm(S(throw), [10])
 assert(res.exit_code == 100)
 assert(res.exception_value == 0)
 assert(res.stack == [10])
+
+sib = StateInit(code = throw).serialize()
+#print(sib)
+sic = \
+C("24_",
+    C("f2c064"))
+assert(sib.finalize() == sic)
+#open("throw.tvc", "wb").write(bytes(sib.finalize()))
+
+si = StateInit().deserialize(S(sib.finalize()))
+assert(si.code == throw)
 
 throwargany = assemble("NEWC ENDC PUSHINT 100 THROWARGANY")
 res = runvm(S(throwargany), [])

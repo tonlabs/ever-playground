@@ -125,5 +125,6 @@ pub(crate) fn dump_cell_generic(cell: InternalCell, ctor_name: &str, tab: &str) 
 }
 
 pub(crate) fn dump_cell(cell: InternalCell) -> String {
-    dump_cell_generic(cell, "C", "  ")
+    // standard python indentation is 4 spaces
+    dump_cell_generic(cell, "C", "    ")
 }

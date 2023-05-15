@@ -35,12 +35,22 @@ class Slice:
 
     def i(self, bits: int) -> int:
         """
-        Reads out a signed integer from the Slice and shifts internal pointer.
+        Reads a signed integer out from the Slice and shifts internal data pointer.
         """
 
     def u(self, bits: int) -> int:
         """
-        Reads out an unsigned integer from the Slice and shifts internal pointer.
+        Reads an unsigned integer out from the Slice and shifts internal data pointer.
+        """
+
+    def refs(self) -> int:
+        """
+        Returns remaining references count.
+        """
+
+    def r(self) -> Cell:
+        """
+        Reads a Cell out from the Slice and shifts internal refs pointer.
         """
 
     def is_empty(self) -> bool:
@@ -57,12 +67,27 @@ class Builder:
     to persistent storage).
     """
 
+    def s(self, slice: Slice) -> Builder:
+        """
+        Appends a Builder with a Slice.
+        """
+
     def i(self, bits: int, integer: int) -> Builder:
         """
         Appends a Builder with an integer of specified length.
         """
 
-    def serialize(self) -> Cell:
+    def x(self, bitstring: str) -> Builder:
+        """
+        Appends a Builder with a bitstring.
+        """
+
+    def r(self, cell: Cell) -> Builder:
+        """
+        Appends a Builder with a Cell.
+        """
+
+    def finalize(self) -> Cell:
         """
         Converts a Builder into an ordinary Cell.
         """
@@ -73,7 +98,6 @@ class Builder:
 
         This is a shortcut for doing Builder.serialize().slice()
         """
-
 
 class Dictionary:
     """
@@ -96,9 +120,14 @@ class Dictionary:
         and all the rest as a value.
         """
 
-    def serialize(self) -> Cell:
+    def serialize(self) -> Builder:
         """
-        Serializes a dictionary into a tree of cells as defined in the TL-B scheme of HashmapE.
+        Serializes a Dictionary into a Builder as defined in the TL-B scheme of HashmapE.
+        """
+
+    def deserialize(self, slice: Slice) -> Dictionary:
+        """
+        Deserializes a Dictionary from a Slice.
         """
 
 class NaN:
