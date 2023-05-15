@@ -111,16 +111,27 @@ class Continuation:
     Opaque type representing Contination value on the output stack of TVM invocation.
     """
 
-def runvm(code: Slice, stack: list, **kwargs) -> list:
+def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
     """
     Invokes a new instance of TVM with the current continuation cc initialized from Slice code.
     A stack of values is passed to the instance before execution.
 
     Optional parameters:
      - capabilities: int
+     - c4: Cell
+     - c7: list
+     - gas_limit: int
+     - gas_credit: int
     """
 
-def assemble(code: str) -> Slice:
+class VmResult:
+    stack: list
+    exit_code: int
+    exception_value: object
+    steps: int
+    gas_used: int
+
+def assemble(code: str) -> Cell:
     """
-    Translates a code string to a Slice of TVM bytecode.
+    Translates a code string in assembler language to a Cell of TVM bytecode.
     """

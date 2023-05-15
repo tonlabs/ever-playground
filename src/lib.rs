@@ -15,11 +15,13 @@ use pyo3::{
 
 use ton_types::{BuilderData, Cell as InternalCell, HashmapE, HashmapType, SliceData};
 use ton_vm::{
+    error::tvm_exception_full,
+    executor::{Engine, gas::gas_state::Gas},
     stack::{
         StackItem, Stack,
-        integer::{IntegerData, utils::process_value}
+        integer::{IntegerData, utils::process_value},
+        savelist::SaveList,
     },
-    executor::Engine
 };
 
 #[pyclass]
@@ -247,15 +249,32 @@ impl Dictionary {
 }
 
 #[pyfunction]
-fn assemble(code: String) -> PyResult<Slice> {
-    let slice = ton_labs_assembler::compile_code(&code)
-        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
-    Ok(Slice { slice })
+fn assemble(code: String) -> PyResult<Cell> {
+    let cell = ton_labs_assembler::compile_code(&code)
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?
+        .cell()
+        .clone();
+    Ok(Cell { cell })
 }
 
-#[derive(Default)]
 struct VmParams {
     capabilites: u64,
+    c4: Option<StackItem>,
+    c7: Option<StackItem>,
+    gas_limit: i64,
+    gas_credit: i64,
+}
+
+impl Default for VmParams {
+    fn default() -> Self {
+        Self {
+            capabilites: 0x537ae,
+            c4: None,
+            c7: None,
+            gas_limit: 1000000000,
+            gas_credit: 0,
+        }
+    }
 }
 
 impl VmParams {
@@ -264,11 +283,25 @@ impl VmParams {
         for (key, val) in dict {
             match key.extract::<String>()?.as_str() {
                 "capabilities" => params.capabilites = val.extract::<u64>()?,
+                "c4" => params.c4 = Some(convert_to_vm(val)?),
+                "c7" => params.c7 = Some(convert_to_vm(val)?),
+                "gas_limit" => params.gas_limit = val.extract::<i64>()?,
+                "gas_credit" => params.gas_credit = val.extract::<i64>()?,
                 p => return err!("unknown vm parameter {}", p)
             }
         }
         Ok(params)
     }
+}
+
+#[pyclass(get_all)]
+#[derive(Default)]
+struct VmResult {
+    stack: Option<PyObject>,
+    exit_code: i32,
+    exception_value: Option<PyObject>,
+    steps: u32,
+    gas_used: i64,
 }
 
 #[pyfunction]
@@ -285,16 +318,36 @@ fn runvm(code: Slice, in_stack: &PyList, kwargs: Option<&PyDict>) -> PyResult<Py
         Some(dict) => VmParams::new(dict)?
     };
 
+    let mut result = VmResult::default();
+    let mut ctrls = SaveList::new();
+    if let Some(mut c4) = params.c4 {
+        ctrls.put(4, &mut c4).map_err(runtime_err)?;
+    }
+    if let Some(mut c7) = params.c7 {
+        ctrls.put(7, &mut c7).map_err(runtime_err)?;
+    }
+    let gas = Gas::new(params.gas_limit, params.gas_credit, 1000000000, 10);
     let mut engine = Engine::with_capabilities(params.capabilites)
-        .setup(code.slice, None, Some(vm_stack), None);
-    let _exit_code = engine.execute()
-        .map_err(|err| PyRuntimeError::new_err(format!("execution failed: {}", err)))?;
+        .setup(code.slice, Some(ctrls), Some(vm_stack), Some(gas));
+    match engine.execute() {
+        Ok(exit_code) => result.exit_code = exit_code,
+        Err(err) => if let Some(exception) = tvm_exception_full(&err) {
+            result.exit_code = exception.exception_or_custom_code();
+            result.exception_value = Some(convert_from_vm(py, &exception.value)?);
+        } else {
+            return Err(PyRuntimeError::new_err(format!("execution failed: {}", err)))
+        }
+    }
 
     let mut out_stack = Vec::new();
     for item in engine.stack().iter() {
         out_stack.push(convert_from_vm(py, item)?)
     }
-    Ok(PyList::new(py, out_stack).to_object(py))
+
+    result.stack = Some(PyList::new(py, out_stack).to_object(py));
+    result.steps = engine.steps();
+    result.gas_used = engine.gas_used();
+    Ok(result.into_py(py))
 }
 
 fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
@@ -378,6 +431,7 @@ fn ever_playground(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Slice>()?;
     m.add_class::<Dictionary>()?;
     m.add_class::<Continuation>()?;
+    m.add_class::<VmResult>()?;
     m.add_wrapped(wrap_pyfunction!(assemble))?;
     m.add_wrapped(wrap_pyfunction!(runvm))?;
     Ok(())

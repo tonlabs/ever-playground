@@ -1,3 +1,5 @@
 /target
 /Cargo.lock
 /.venv
+/ever_playground/__pycache__
+/ever_playground/*.so
