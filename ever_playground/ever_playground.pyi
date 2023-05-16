@@ -96,7 +96,7 @@ class Builder:
         """
         Converts a Builder into a Slice.
 
-        This is a shortcut for doing Builder.serialize().slice()
+        This is a shortcut for doing Builder.finalize().slice()
         """
 
 class Dictionary:
@@ -151,6 +151,7 @@ def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
      - c7: list
      - gas_limit: int
      - gas_credit: int
+     - trace: bool
     """
 
 class VmResult:

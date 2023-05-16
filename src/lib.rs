@@ -16,7 +16,7 @@ use pyo3::{
 use ton_types::{BuilderData, Cell as InternalCell, HashmapE, HashmapType, SliceData};
 use ton_vm::{
     error::tvm_exception_full,
-    executor::{Engine, gas::gas_state::Gas},
+    executor::{Engine, EngineTraceInfo, gas::gas_state::Gas},
     stack::{
         StackItem, Stack,
         integer::{IntegerData, utils::process_value},
@@ -42,8 +42,7 @@ impl Cell {
             .map_err(|_| PyRuntimeError::new_err(format!("invalid bitstring \"{}\"", bitstring)))?;
         let mut b = BuilderData::from_slice(&slice);
         for arg in args.iter() {
-            let pycell = arg.downcast::<PyCell<Cell>>()?;
-            let cell = pycell.extract::<Cell>()?;
+            let cell = arg.extract::<Cell>()?;
             b.checked_append_reference(cell.cell).map_err(runtime_err)?;
         }
         let cell = b.into_cell().map_err(runtime_err)?;
@@ -62,7 +61,7 @@ impl Cell {
     #[staticmethod]
     fn read(bytes: Vec<u8>) -> PyResult<Self> {
         ton_types::read_single_root_boc(bytes)
-            .map(|cell| Cell { cell })
+            .map(|cell| Self { cell })
             .map_err(runtime_err)
     }
     fn repr_hash(&self) -> BigUint {
@@ -98,7 +97,7 @@ impl Slice {
     #[new]
     fn new(cell: Cell) -> PyResult<Self> {
         SliceData::load_cell(cell.cell)
-            .map(|slice| Slice { slice })
+            .map(|slice| Self { slice })
             .map_err(runtime_err)
     }
     fn i(&mut self, bits: usize) -> PyResult<BigInt> {
@@ -222,26 +221,22 @@ impl Dictionary {
         }
     }
     fn add(&mut self, key: Slice, value: Slice) -> PyResult<Self> {
-        self.map.set(key.slice, &value.slice)
-            .map_err(runtime_err)?;
+        self.map.set(key.slice, &value.slice).map_err(runtime_err)?;
         Ok(self.clone())
     }
     fn add_kv_slice(&mut self, key_bits: usize, mut slice: Slice) -> PyResult<Self> {
-        let key = slice.slice.get_next_slice(key_bits)
-            .map_err(runtime_err)?;
-        self.map.set(key, &slice.slice)
-            .map_err(runtime_err)?;
+        let key = slice.slice.get_next_slice(key_bits).map_err(runtime_err)?;
+        self.map.set(key, &slice.slice).map_err(runtime_err)?;
         Ok(self.clone())
     }
     fn serialize(&self) -> PyResult<Builder> {
         let mut builder = BuilderData::new();
-        self.map.write_hashmap_data(&mut builder)
-            .map_err(runtime_err)?;
+        self.map.write_hashmap_data(&mut builder).map_err(runtime_err)?;
         Ok(Builder { builder })
     }
     #[staticmethod]
     fn deserialize(bits: usize, slice: &mut Slice) -> PyResult<Self> {
-        let map = if slice.slice.get_bit(0).map_err(runtime_err)? {
+        let map = if slice.slice.get_next_bit().map_err(runtime_err)? {
             let cell = slice.slice.checked_drain_reference().map_err(runtime_err)?;
             HashmapE::with_hashmap(bits, Some(cell))
         } else {
@@ -275,6 +270,7 @@ struct VmParams {
     c7: Option<StackItem>,
     gas_limit: i64,
     gas_credit: i64,
+    trace: bool,
 }
 
 impl Default for VmParams {
@@ -285,6 +281,7 @@ impl Default for VmParams {
             c7: None,
             gas_limit: 1000000000,
             gas_credit: 0,
+            trace: false,
         }
     }
 }
@@ -299,6 +296,7 @@ impl VmParams {
                 "c7" => params.c7 = Some(convert_to_vm(val)?),
                 "gas_limit" => params.gas_limit = val.extract::<i64>()?,
                 "gas_credit" => params.gas_credit = val.extract::<i64>()?,
+                "trace" => params.trace = val.extract::<bool>()?,
                 p => return err!("unknown vm parameter {}", p)
             }
         }
@@ -341,6 +339,9 @@ fn runvm(code: Slice, in_stack: &PyList, kwargs: Option<&PyDict>) -> PyResult<Py
     let gas = Gas::new(params.gas_limit, params.gas_credit, 1000000000, 10);
     let mut engine = Engine::with_capabilities(params.capabilites)
         .setup(code.slice, Some(ctrls), Some(vm_stack), Some(gas));
+    if params.trace {
+        engine.set_trace_callback(trace_callback);
+    }
     match engine.execute() {
         Ok(exit_code) => result.exit_code = exit_code,
         Err(err) => if let Some(exception) = tvm_exception_full(&err) {
@@ -360,6 +361,27 @@ fn runvm(code: Slice, in_stack: &PyList, kwargs: Option<&PyDict>) -> PyResult<Py
     result.steps = engine.steps();
     result.gas_used = engine.gas_used();
     Ok(result.into_py(py))
+}
+
+fn trace_callback(_engine: &Engine, info: &EngineTraceInfo) {
+    use ton_vm::executor::EngineTraceInfoType::*;
+    match info.info_type {
+        Start => { }
+        Dump =>  println!("DUMP {}", info.cmd_str),
+        Exception => println!("EXCEPTION"),
+        _ => {
+            println!("STEP {} {}", info.step, info.cmd_str);
+            println!("GAS {} in total, {} by insn", info.gas_used, info.gas_cmd);
+            if info.stack.is_empty() {
+                println!("STACK <empty>")
+            } else {
+                for item in info.stack.iter() {
+                    println!("STACK {}", item)
+                }
+            }
+            println!()
+        }
+    }
 }
 
 fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
