@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Tuple
 
 from .ever_playground import Cell, Builder, Slice, Dictionary, assemble, runvm
 
@@ -31,7 +32,7 @@ class ExceptionCode(Enum):
     OutOfGas = 13
     IllegalInstruction = 14
 
-def parse_smc_addr(addr_string: str) -> tuple[int, int]:
+def parse_smc_addr(addr_string: str) -> Tuple[int, int]:
     addr_pair = addr_string.split(":")
     assert(len(addr_pair) == 2)
     wc = int(addr_pair[0])
