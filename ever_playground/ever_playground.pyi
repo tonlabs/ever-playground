@@ -72,14 +72,26 @@ class Builder:
         Appends a Builder with a Slice.
         """
 
+    def b(self, builder: Builder) -> Builder:
+        """
+        Appends a Builder with another Builder.
+        """
+
     def i(self, bits: int, integer: int) -> Builder:
         """
         Appends a Builder with an integer of specified length.
         """
 
+    def ib(self, bin: str) -> Builder:
+        """
+        Appends a Builder with an integer from binary string.
+        """
+
     def x(self, bitstring: str) -> Builder:
         """
         Appends a Builder with a bitstring.
+
+        TODO describe what TVM bitstring is
         """
 
     def r(self, cell: Cell) -> Builder:

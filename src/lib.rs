@@ -13,7 +13,7 @@ use pyo3::{
     types::{PyBytes, PyDict, PyList, PyLong, PyTuple},
 };
 
-use ton_types::{BuilderData, Cell as InternalCell, HashmapE, HashmapType, SliceData};
+use ton_types::{BuilderData, Cell as InternalCell, HashmapE, HashmapType, SliceData, IBitstring};
 use ton_vm::{
     error::tvm_exception_full,
     executor::{Engine, EngineTraceInfo, gas::gas_state::Gas},
@@ -158,6 +158,10 @@ impl Builder {
             .map_err(runtime_err)?;
         Ok(slf)
     }
+    fn b(mut slf: PyRefMut<Self>, builder: Builder) -> PyResult<PyRefMut<Self>> {
+        slf.builder.append_builder(&builder.builder).map_err(runtime_err)?;
+        Ok(slf)
+    }
     fn i(mut slf: PyRefMut<Self>, bits: usize, integer: BigInt) -> PyResult<PyRefMut<Self>> {
         if bits == 0 {
             return err!("bits must be greater than 0")
@@ -168,6 +172,17 @@ impl Builder {
             unsigned_int_serialize(integer, bits)?
         };
         slf.builder.append_raw(&bytes, bits).map_err(runtime_err)?;
+        Ok(slf)
+    }
+    // TODO consider moving this to Python library (by using superclassing)
+    fn ib(mut slf: PyRefMut<Self>, bin: String) -> PyResult<PyRefMut<Self>> {
+        for digit in bin.chars() {
+            match digit {
+                '0' => { slf.builder.append_bit_zero().map_err(runtime_err)?; }
+                '1' => { slf.builder.append_bit_one().map_err(runtime_err)?; }
+                _ => return err!("Failed to parse binary string {}", bin)
+            }
+        }
         Ok(slf)
     }
     fn x(mut slf: PyRefMut<Self>, bitstring: String) -> PyResult<PyRefMut<Self>> {

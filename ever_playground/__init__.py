@@ -9,7 +9,7 @@ __all__ = [
     "Slice",
     "Dictionary",
     "ExceptionCode",
-    "StateInit"
+    "StateInit",
     "assemble",
     "runvm",
     "parse_smc_addr",
@@ -128,3 +128,25 @@ class StateInit:
         else:
             b.i(1, 1).s(Slice(self.library.serialize()))
         return b
+
+class Currency:
+    FACTOR = 1000000000 # TODO make this read-only
+    value: int
+
+    def __init__(self, value: int = None):
+        if value < 0 or value.bit_length() > 128:
+            raise Exception("Currency value must be non-negative and fit into 128 bits")
+        self.value = value
+
+    def deserialize(self, s: Slice):
+        # TODO
+        pass
+
+    def serialize(self) -> Builder:
+        if self.value == 0:
+            return Builder().i(4, 0)
+        len = 1
+        while self.value.bit_length() > len * 8:
+            len += 1
+        assert(len <= 16)
+        return Builder().i(4, len).i(len * 8, self.value)
