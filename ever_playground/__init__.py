@@ -13,6 +13,9 @@ __all__ = [
     "assemble",
     "runvm",
     "parse_smc_addr",
+    "load_address",
+    "parse_load_address",
+    "parse_adnl_address",
 ]
 
 class ExceptionCode(Enum):
@@ -33,11 +36,35 @@ class ExceptionCode(Enum):
     IllegalInstruction = 14
 
 def parse_smc_addr(addr_string: str) -> Tuple[int, int]:
+    """Parses smart-contract address"""
     addr_pair = addr_string.split(":")
     assert(len(addr_pair) == 2)
     wc = int(addr_pair[0])
     addr = int(addr_pair[1], 16)
     return wc, addr
+
+def load_address(filename: str) -> Tuple[int, int]:
+    """Loads address from file"""
+    with open(filename, "rb") as file:
+        data = file.read()
+        addr = int.from_bytes(data[:32], "big")
+        wc = 0
+        if len(data) > 32:
+            wc = int.from_bytes(data[32:], "big")
+        return wc, addr
+
+def parse_load_address(addr: str) -> Tuple[int, int]:
+    """Parses string as address or load address from file (if string is prefixed by @)"""
+    if addr.startswith("@"):
+        return load_address(addr[1:])
+    else:
+        return parse_smc_addr(addr)
+
+def parse_adnl_address(addr: str) -> int:
+    """Parses ADNL address"""
+    if len(addr) != 64:
+        raise Exception("ADNL address must consist of exactly 64 hexadecimal characters")
+    return int(addr, 16)
 
 class StateInit:
     split_depth: int
