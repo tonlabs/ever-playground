@@ -39,7 +39,6 @@ def test_recover_stake():
     py_output = "py-" + base + ".boc"
     fift_output = "fift-" + base + "boc"
 
-    # TODO both scripts depend on current time
     run(["python3", script + ".py", py_output])
     run(fift + [script + ".fif", fift_output])
 

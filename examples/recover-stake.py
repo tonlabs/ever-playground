@@ -28,7 +28,7 @@ if argc > 0:
     output_filename = sys.argv[1]
 
 # now constant query_id
-query_id = int(time.time())
+query_id = 1684770872 # int(time.time())
 
 # ."query_id for stake recovery message is set to " query_id . cr
 print(f"query_id for stake recovery message is set to {query_id}")
