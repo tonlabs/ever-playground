@@ -58,10 +58,10 @@ if argc > 4:
 # ."from smart contract " -1 src_addr 2dup 1 .Addr ." = " .addr
 # ." with maximal stake factor with respect to the minimal stake " max_factor ._
 # ."/65536 and validator ADNL address " adnl_addr 64x. cr
-print(f"Creating a request to participate in validator elections at time {elect_time}"
-    f" from smart contract -1:{src_addr:x}"
-    f" with maximal stake factor with respect to the minimal stake {max_factor}"
-    f"/65536 and validator ADNL address {adnl_addr:x}")
+print(f"Creating a request to participate in validator elections at time {elect_time} "
+    f"from smart contract -1:{src_addr:064x} "
+    f"with maximal stake factor with respect to the minimal stake {max_factor}"
+    f"/65536 and validator ADNL address {adnl_addr:064x}")
 
 # B{654c5074} elect_time 32 u>B B+ max_factor 32 u>B B+ src_addr 256 u>B B+ adnl_addr 256 u>B B+
 def bb(len: int, v: int):

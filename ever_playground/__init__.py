@@ -1,7 +1,9 @@
 from enum import Enum
 from typing import Tuple
+from fractions import Fraction
 
 from .ever_playground import Cell, Builder, Slice, Dictionary, assemble, runvm
+from .ever_playground import ed25519_new_keypair, ed25519_secret_to_public, ed25519_sign, ed25519_check_signature
 
 __all__ = [
     "Cell",
@@ -16,6 +18,10 @@ __all__ = [
     "load_address",
     "parse_load_address",
     "parse_adnl_address",
+    "ed25519_new_keypair",
+    "ed25519_secret_to_public",
+    "ed25519_sign",
+    "ed25519_check_signature",
 ]
 
 class ExceptionCode(Enum):
@@ -65,6 +71,14 @@ def parse_adnl_address(addr: str) -> int:
     if len(addr) != 64:
         raise Exception("ADNL address must consist of exactly 64 hexadecimal characters")
     return int(addr, 16)
+
+def load_keypair(filename: str) -> Tuple[bytes, bytes]:
+    """Loads private key from a file"""
+    print(f"Loading private key from file {filename}")
+    with open(filename, "rb") as file:
+        secret = file.read()
+        public = ed25519_secret_to_public(secret)
+        return public, secret
 
 class StateInit:
     split_depth: int
@@ -130,7 +144,7 @@ class StateInit:
         return b
 
 class Currency:
-    FACTOR = 1000000000 # TODO make this read-only
+    FACTOR = 1000000000
     value: int
 
     def __init__(self, value: int = None):
@@ -138,15 +152,24 @@ class Currency:
             raise Exception("Currency value must be non-negative and fit into 128 bits")
         self.value = value
 
+    @classmethod
+    def from_str(cls, value: str):
+        value = int(Fraction(value) * Currency.FACTOR)
+        return Currency(value)
+
     def deserialize(self, s: Slice):
-        # TODO
-        pass
+        len = s.u(4)
+        if len == 0:
+            self.value = 0
+        else:
+            self.value = s.u(len * 8)
 
     def serialize(self) -> Builder:
         if self.value == 0:
             return Builder().i(4, 0)
-        len = 1
-        while self.value.bit_length() > len * 8:
-            len += 1
+        len = (self.value.bit_length() + 7) >> 3
         assert(len <= 16)
         return Builder().i(4, len).i(len * 8, self.value)
+
+    def __str__(self) -> str:
+        return str(float(Fraction(self.value) / self.FACTOR))

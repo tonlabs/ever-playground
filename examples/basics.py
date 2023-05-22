@@ -65,7 +65,7 @@ C("c_",
             C("bf94a50c1a849a4742214e751977af268269e6eeae064ce800634acea241d430d3"))))
 expect(c, dict_cell1)
 
-dict_bytes = dict_cell1.write()
+dict_bytes = dict_cell1.write(0)
 dict_bytes = bytes(dict_cell1)
 dict_cell2 = C.read(dict_bytes)
 #print(dict_cell2)

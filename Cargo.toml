@@ -1,6 +1,6 @@
 [package]
 name = "ever-playground"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 
 [lib]
@@ -8,10 +8,12 @@ name = "ever_playground"
 crate-type = ["cdylib"]
 
 [dependencies]
+ed25519-dalek = "1"
 num-bigint = "0.4"
 pyo3 = { version = "0.18.3", features = ["extension-module", "num-bigint"] }
+rand = "0.7"
 
-ton_block = { git = "https://github.com/tonlabs/ever-block.git", tag = "1.9.48" }
-ton_types = { git = "https://github.com/tonlabs/ever-types.git", tag = "2.0.4" }
-ton_labs_assembler = { git = "https://github.com/tonlabs/ever-assembler", tag = "1.2.98" }
-ton_vm = { git = "https://github.com/tonlabs/ever-vm.git", tag = "1.8.136" }
+ton_block = { git = "https://github.com/tonlabs/ever-block.git", tag = "1.9.61" }
+ton_types = { git = "https://github.com/tonlabs/ever-types.git", tag = "2.0.7" }
+ton_labs_assembler = { git = "https://github.com/tonlabs/ever-assembler", tag = "1.2.111" }
+ton_vm = { git = "https://github.com/tonlabs/ever-vm.git", tag = "1.8.149" }

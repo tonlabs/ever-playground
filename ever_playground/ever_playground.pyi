@@ -6,9 +6,13 @@ class Cell:
     cells.
     """
 
-    def write(self) -> bytes:
+    def write(self, flags: int) -> bytes:
         """
         Writes the Cell to a boc bytestream.
+
+        Bits of the flags parameter have the following effect:
+        - +1 enables bag-of-cells index creation (useful for lazy deserialization of large bags of cells).
+        - +2 includes the CRC32-C of all data into the serialization (useful for checking data integrity).
         """
 
     @staticmethod
@@ -94,9 +98,19 @@ class Builder:
         TODO describe what TVM bitstring is
         """
 
+    def y(self, data: bytes) -> Builder:
+        """
+        Appends a Builder with bytes.
+        """
+
     def r(self, cell: Cell) -> Builder:
         """
         Appends a Builder with a Cell.
+        """
+
+    def fits(self, slice: Slice, extra_bits: int, extra_refs: int) -> bool:
+        """
+        TODO
         """
 
     def finalize(self) -> Cell:
@@ -126,10 +140,20 @@ class Dictionary:
         Searches for a given key and returns corresponding value. None is returned when key is not found.
         """
 
+    def add(self, key: Slice, value: Slice) -> Dictionary:
+        """
+        TODO
+        """
+
     def add_kv_slice(self, key_len: int, slice: Slice) -> Dictionary:
         """
         Adds a new key-value pair from the slice. The first key_len data bits are used as a key,
         and all the rest as a value.
+        """
+
+    def cell(self) -> Cell:
+        """
+        Returns underlying cell.
         """
 
     def serialize(self) -> Builder:
@@ -176,4 +200,22 @@ class VmResult:
 def assemble(code: str) -> Cell:
     """
     Translates a code string in assembler language to a Cell of TVM bytecode.
+    """
+
+from typing import Tuple
+
+def ed25519_new_keypair() -> Tuple[bytes, bytes]:
+    """
+    """
+
+def ed25519_secret_to_public(secret: bytes) -> bytes:
+    """
+    """
+
+def ed25519_sign(data: bytes, secret: bytes) -> bytes:
+    """
+    """
+
+def ed25519_check_signature(data: bytes, signature: bytes, public: bytes) -> bool:
+    """
     """

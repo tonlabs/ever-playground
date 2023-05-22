@@ -39,5 +39,5 @@ body = B().x("47657424").i(64, query_id).finalize()
 print(f"Message body is {body}")
 
 # 2 boc+>B output_fname tuck B>file ."Saved to file " type cr
-open(output_filename, "wb").write(bytes(body))
+open(output_filename, "wb").write(body.write(2))
 print(f"Saved to file {output_filename}")

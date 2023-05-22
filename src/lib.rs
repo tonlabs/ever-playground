@@ -3,6 +3,7 @@ mod utils;
 
 use std::sync::Arc;
 
+use ed25519_dalek::Signer;
 use utils::*;
 
 use num_bigint::{BigInt, BigUint, Sign};
@@ -26,7 +27,7 @@ use ton_vm::{
 
 #[pyclass]
 #[derive(Clone)]
-pub struct Cell {
+struct Cell {
     cell: InternalCell,
 }
 
@@ -53,10 +54,16 @@ impl Cell {
             .map(|cell| Self { cell })
             .map_err(runtime_err)
     }
-    fn write<'a>(&'a self, py: Python<'a>) -> PyResult<&PyBytes> {
-        ton_types::write_boc(&self.cell)
-            .map(|bytes| PyBytes::new(py, &bytes))
-            .map_err(runtime_err)
+    fn write<'a>(&'a self, py: Python<'a>, flags: usize) -> PyResult<&PyBytes> {
+        if flags > 3 {
+            return err!("flags {} is not supported", flags)
+        }
+        let include_index = flags & 1 == 1;
+        let include_crc = flags & 2 == 2;
+        let writer = ton_types::BocWriter::with_root(&self.cell).map_err(runtime_err)?;
+        let mut bytes = Vec::new();
+        writer.write_ex(&mut bytes, include_index, include_crc, None, None).map_err(runtime_err)?;
+        Ok(PyBytes::new(py, &bytes))
     }
     #[staticmethod]
     fn read(bytes: Vec<u8>) -> PyResult<Self> {
@@ -75,7 +82,7 @@ impl Cell {
         PyResult::Ok(dump_cell(self.cell.clone()))
     }
     fn __bytes__<'a>(&'a self, py: Python<'a>) -> PyResult<&PyBytes> {
-        self.write(py)
+        self.write(py, 0)
     }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
         match op {
@@ -88,7 +95,7 @@ impl Cell {
 
 #[pyclass]
 #[derive(Clone)]
-pub struct Slice {
+struct Slice {
     slice: SliceData,
 }
 
@@ -143,7 +150,7 @@ impl Slice {
 
 #[pyclass]
 #[derive(Clone, Default)]
-pub struct Builder {
+struct Builder {
     builder: BuilderData,
 }
 
@@ -192,10 +199,22 @@ impl Builder {
             .map_err(runtime_err)?;
         Ok(slf)
     }
+    fn y(mut slf: PyRefMut<Self>, bytes: Vec<u8>) -> PyResult<PyRefMut<Self>> {
+        let length = bytes.len() * 8;
+        let bytes = BuilderData::with_raw(bytes, length)
+            .map_err(runtime_err)?;
+        slf.builder.append_builder(&bytes)
+            .map_err(runtime_err)?;
+        Ok(slf)
+    }
     fn r(mut slf: PyRefMut<Self>, cell: Cell) -> PyResult<PyRefMut<Self>> {
         slf.builder.checked_append_reference(cell.cell)
             .map_err(runtime_err)?;
         Ok(slf)
+    }
+    fn fits(&self, slice: Slice, extra_bits: usize, extra_refs: usize) -> bool {
+        self.builder.check_enough_space(slice.slice.remaining_bits() + extra_bits) &&
+            self.builder.check_enough_refs(slice.slice.remaining_references() + extra_refs)
     }
     fn slice(&self) -> PyResult<Slice> {
         SliceData::load_builder(self.builder.clone())
@@ -216,7 +235,7 @@ impl Builder {
 
 #[pyclass]
 #[derive(Clone)]
-pub struct Dictionary {
+struct Dictionary {
     map: HashmapE,
 }
 
@@ -235,14 +254,19 @@ impl Dictionary {
             None => Ok(py.None())
         }
     }
-    fn add(&mut self, key: Slice, value: Slice) -> PyResult<Self> {
-        self.map.set(key.slice, &value.slice).map_err(runtime_err)?;
-        Ok(self.clone())
+    fn add(mut slf: PyRefMut<Self>, key: Slice, value: Slice) -> PyResult<PyRefMut<Self>> {
+        slf.map.set(key.slice, &value.slice).map_err(runtime_err)?;
+        Ok(slf)
     }
-    fn add_kv_slice(&mut self, key_bits: usize, mut slice: Slice) -> PyResult<Self> {
+    fn add_kv_slice(mut slf: PyRefMut<Self>, key_bits: usize, mut slice: Slice) -> PyResult<PyRefMut<Self>> {
         let key = slice.slice.get_next_slice(key_bits).map_err(runtime_err)?;
-        self.map.set(key, &slice.slice).map_err(runtime_err)?;
-        Ok(self.clone())
+        slf.map.set(key, &slice.slice).map_err(runtime_err)?;
+        Ok(slf)
+    }
+    fn cell(&self) -> PyResult<Cell> {
+        self.map.data()
+            .map(|cell| Cell { cell: cell.clone() })
+            .ok_or(PyRuntimeError::new_err("empty dictionary"))
     }
     fn serialize(&self) -> PyResult<Builder> {
         let mut builder = BuilderData::new();
@@ -472,6 +496,45 @@ fn convert_from_vm(py: Python<'_>, item: &StackItem) -> PyResult<PyObject> {
     }
 }
 
+#[pyfunction]
+fn ed25519_new_keypair<'a>(py: Python<'a>) -> PyResult<&PyTuple> {
+    let mut csprng = rand::thread_rng();
+    let keypair = ed25519_dalek::Keypair::generate(&mut csprng);
+    Ok(PyTuple::new(py, vec!(
+        PyBytes::new(py, keypair.secret.as_bytes()),
+        PyBytes::new(py, keypair.public.as_bytes()),
+    )))
+}
+
+fn load_secret(secret: &PyBytes) -> PyResult<ed25519_dalek::SecretKey> {
+    let secret = ed25519_dalek::SecretKey::from_bytes(secret.as_bytes())
+        .map_err(|err| PyRuntimeError::new_err(format!("invalid secret bytes: {}", err)))?;
+    Ok(secret)
+}
+
+#[pyfunction]
+fn ed25519_secret_to_public<'a>(secret: &'a PyBytes, py: Python<'a>) -> PyResult<&'a PyBytes> {
+    let secret = load_secret(secret)?;
+    let public = ed25519_dalek::PublicKey::from(&secret);
+    Ok(PyBytes::new(py, public.as_bytes()))
+}
+
+#[pyfunction]
+fn ed25519_sign<'a>(data: &'a PyBytes, secret: &'a PyBytes, py: Python<'a>) -> PyResult<&'a PyBytes> {
+    let secret = load_secret(secret)?;
+    let public = ed25519_dalek::PublicKey::from(&secret);
+    let keypair = ed25519_dalek::Keypair { secret, public };
+    let signature = &keypair.sign(data.as_bytes()).to_bytes()[0..];
+    Ok(PyBytes::new(py, signature))
+}
+
+#[pyfunction]
+fn ed25519_check_signature<'a>(data: &'a PyBytes, signature: &'a PyBytes, public: &'a PyBytes) -> bool {
+    let Ok(public) = ed25519_dalek::PublicKey::from_bytes(public.as_bytes()) else { return false };
+    let Ok(signature) = ed25519_dalek::Signature::from_bytes(signature.as_bytes()) else { return false };
+    public.verify_strict(data.as_bytes(), &signature).is_ok()
+}
+
 #[pymodule]
 fn ever_playground(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<NaN>()?;
@@ -483,5 +546,9 @@ fn ever_playground(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<VmResult>()?;
     m.add_wrapped(wrap_pyfunction!(assemble))?;
     m.add_wrapped(wrap_pyfunction!(runvm))?;
+    m.add_wrapped(wrap_pyfunction!(ed25519_new_keypair))?;
+    m.add_wrapped(wrap_pyfunction!(ed25519_secret_to_public))?;
+    m.add_wrapped(wrap_pyfunction!(ed25519_sign))?;
+    m.add_wrapped(wrap_pyfunction!(ed25519_check_signature))?;
     Ok(())
 }

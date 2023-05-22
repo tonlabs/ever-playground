@@ -57,8 +57,8 @@ loop = """
     REPEAT
 """
 
-chksignu_loop = assemble(loop.format(50000, "CHKSIGNU"))
-blkdrop2_loop = assemble(loop.format(5000000, "BLKDROP 2"))
+chksignu_loop = assemble(loop.format(10000, "CHKSIGNU"))
+blkdrop2_loop = assemble(loop.format(1000000, "BLKDROP 2"))
 
 res = runvm(S(chksignu_loop), [], gas_limit = 100000)
 expect(ExceptionCode.OutOfGas.value, res.exit_code) # out of gas
@@ -78,5 +78,5 @@ def benchmark(name, code_cell, iters, steps = None, gas_used = None):
     print("total time {:.2f}s".format(elapsed))
     print("one iteration takes {:.2f}us".format(elapsed * 1000000 / iters))
 
-benchmark("chksignu loop", chksignu_loop, 50000, 200008, 3750248)
-benchmark("blkdrop2 loop", blkdrop2_loop, 5000000, 20000008, 375000248)
+benchmark("chksignu loop", chksignu_loop, 10000, 40008, 750259)
+benchmark("blkdrop2 loop", blkdrop2_loop, 1000000, 4000008, 75000248)
