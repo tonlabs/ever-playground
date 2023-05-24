@@ -70,6 +70,7 @@ def test_validator_elect_req():
     assert_identical_files(py_output, fift_output)
 
 def test_highload_wallet_v2():
+    curdir = os.getcwd()
     os.chdir("examples/highload")
 
     script = "highload-wallet-v2"
@@ -88,9 +89,15 @@ def test_highload_wallet_v2():
     remove(fift_output + ".boc")
     assert(p == f)
 
+    os.chdir(curdir)
+
+def test_ifjmp_perf_eval():
+    run(["python3", "examples/ifjmp-perf-eval.py"])
+
 run_basics()
 run_runvm()
 test_recover_stake()
 test_testgiver()
 test_validator_elect_req()
 test_highload_wallet_v2()
+test_ifjmp_perf_eval()

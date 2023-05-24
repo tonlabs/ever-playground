@@ -2,8 +2,6 @@
 # "TonUtil.fif" include
 
 import sys
-from fractions import Fraction
-
 from ever_playground import Builder as B, Slice as S, Currency, parse_smc_addr, parse_load_address
 
 # { ."usage: " @' $0 type ." <dest-addr> <seqno> <amount> [<savefile>]" cr
@@ -52,9 +50,9 @@ print(f"Requesting {amount} to account {dest_address} seqno {hex(seqno)} bounce 
 #    amount Gram, 0 9 64 32 + + 1+ 1+ u, 0 32 u, "GIFT" $, b>
 # <b seqno 32 u, 1 8 u, swap ref, b>
 # dup ."enveloping message: " <s csr. cr
-hint = bytes("GIFT", "utf8").hex()
+hint = bytes("GIFT", "utf8")
 c1 = B().ib("01").i(1, bounce).ib("000100").i(8, dest_wc).i(256, dest_addr) \
-    .b(amount.serialize()).i(9 + 64 + 32 + 1 + 1, 0).i(32, 0).x(hint) \
+    .b(amount.serialize()).i(9 + 64 + 32 + 1 + 1, 0).i(32, 0).y(hint) \
     .finalize()
 message = B().i(32, seqno).i(8, 1).r(c1).finalize()
 print(f"enveloping message: {message}")

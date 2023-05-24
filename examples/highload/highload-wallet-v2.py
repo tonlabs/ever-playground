@@ -87,11 +87,12 @@ def send(address: str, ng: Currency, bounce: bool):
 with open(order_file, "r") as file:
     for line in file:
         chunks = line.split(" ")
-        assert(len(chunks) == 3)
+        assert(len(chunks) == 4)
         assert(chunks[0] == "SEND")
         address = chunks[1]
-        ng = Currency.from_str(chunks[2])
-        send(address, ng, True) # TODO read bounce from order list?
+        bounce = bool(chunks[2])
+        ng = Currency.from_str(chunks[3])
+        send(address, ng, bounce)
 
 now = 1684770872 # int(time.time())
 orders_cell = orders.serialize().finalize()
