@@ -1,3 +1,5 @@
+from typing import Optional
+
 class Cell:
     """
     A TVM cell consists of at most 1023 bits of data, and of at
@@ -8,9 +10,9 @@ class Cell:
 
     def write(self, flags: int) -> bytes:
         """
-        Writes the Cell to a boc bytestream.
+        Writes the cell to boc bytes.
 
-        Bits of the flags parameter have the following effect:
+        Bits of the ``flags`` parameter have the following effect:
         - +1 enables bag-of-cells index creation (useful for lazy deserialization of large bags of cells).
         - +2 includes the CRC32-C of all data into the serialization (useful for checking data integrity).
         """
@@ -18,12 +20,22 @@ class Cell:
     @staticmethod
     def read(bytes: bytes) -> Cell:
         """
-        Reads a Cell from a boc bytestream.
+        Reads a Cell from the boc ``bytes``.
         """
 
     def repr_hash(self) -> int:
         """
-        Returns representation hash of the Cell.
+        Returns the representation hash of the cell.
+        """
+
+    def cells_count(self) -> int:
+        """
+        Returns the total cells count.
+        """
+
+    def unique_cells_count(self) -> int:
+        """
+        Returns the unique cells count.
         """
 
 class Slice:
@@ -35,31 +47,31 @@ class Slice:
     cell or a tree of cells.
     """
 
-    def __init__(self, cell: Cell) -> Slice: ...
+    def __init__(self, cell: Cell) -> None: ...
 
     def i(self, bits: int) -> int:
         """
-        Reads a signed integer out from the Slice and shifts internal data pointer.
+        Reads a signed integer of bit length ``bits`` and advances the internal data pointer.
         """
 
     def u(self, bits: int) -> int:
         """
-        Reads an unsigned integer out from the Slice and shifts internal data pointer.
+        Reads an unsigned integer of bit length ``bits`` and advances the internal data pointer.
         """
 
     def refs(self) -> int:
         """
-        Returns remaining references count.
+        Returns the remaining children cells (aka references) count.
         """
 
     def r(self) -> Cell:
         """
-        Reads a Cell out from the Slice and shifts internal refs pointer.
+        Reads the next children cell (aka reference) and advances the internal refs pointer.
         """
 
     def is_empty(self) -> bool:
         """
-        Returns whether the Slice data is empty.
+        Returns whether the data of the slice is empty.
         """
 
 class Builder:
@@ -73,54 +85,60 @@ class Builder:
 
     def s(self, slice: Slice) -> Builder:
         """
-        Appends a Builder with a Slice.
+        Appends Builder with ``slice``.
         """
 
     def b(self, builder: Builder) -> Builder:
         """
-        Appends a Builder with another Builder.
+        Appends Builder with another ``builder``.
         """
 
     def i(self, bits: int, integer: int) -> Builder:
         """
-        Appends a Builder with an integer of specified length.
+        Appends Builder with ``integer`` of specified bit length ``bits``.
         """
 
     def ib(self, bin: str) -> Builder:
         """
-        Appends a Builder with an integer from binary string.
+        Appends Builder with an integer from the binary string ``bin``.
         """
 
     def x(self, bitstring: str) -> Builder:
         """
-        Appends a Builder with a bitstring.
+        Appends Builder with ``bitstring``.
 
-        TODO describe what TVM bitstring is
+        Bitstrings provide a way to represent a sequence of bits as a hexadecimal string.
+        If the sequence has the bit length multiple of 4, then the hexadecimal string
+        contains just length/4 count of hexadecimal digits. Otherwise, the representation
+        uses a completion tag ``_`` in the end of the hexstring, which means that
+        the rightmost ``0`` bits and the first ``1`` bit are trimmed. For more details,
+        see chapter 1.0 of the TVM whitepaper.
         """
 
     def y(self, data: bytes) -> Builder:
         """
-        Appends a Builder with bytes.
+        Appends Builder with the ``data`` bytes.
         """
 
     def r(self, cell: Cell) -> Builder:
         """
-        Appends a Builder with a Cell.
+        Appends Builder with ``cell``.
         """
 
     def fits(self, slice: Slice, extra_bits: int, extra_refs: int) -> bool:
         """
-        TODO
+        Checks whether Builder can be appended with ``slice``, some extra data of the
+        ``extra_bits`` length, and some extra children cells ``extra_refs``. 
         """
 
     def finalize(self) -> Cell:
         """
-        Converts a Builder into an ordinary Cell.
+        Converts (finalizes) Builder into an ordinary Cell.
         """
 
     def slice(self) -> Slice:
         """
-        Converts a Builder into a Slice.
+        Converts Builder into Slice.
 
         This is a shortcut for doing Builder.finalize().slice()
         """
@@ -135,19 +153,19 @@ class Dictionary:
 
     def __init__(self, bit_len: int) -> None: ...
 
-    def get(self, key: Slice) -> Slice:
+    def get(self, key: Slice) -> Optional[Slice]:
         """
-        Searches for a given key and returns corresponding value. None is returned when key is not found.
+        Gets a value for the given ``key``.
         """
 
     def add(self, key: Slice, value: Slice) -> Dictionary:
         """
-        TODO
+        Sets ``value`` for the given ``key``.
         """
 
     def add_kv_slice(self, key_len: int, slice: Slice) -> Dictionary:
         """
-        Adds a new key-value pair from the slice. The first key_len data bits are used as a key,
+        Adds a new key-value pair from ``slice``. The first ``key_len`` data bits are used as a key,
         and all the rest as a value.
         """
 
@@ -158,12 +176,13 @@ class Dictionary:
 
     def serialize(self) -> Builder:
         """
-        Serializes a Dictionary into a Builder as defined in the TL-B scheme of HashmapE.
+        Serializes Dictionary into Builder as defined in the TL-B scheme of HashmapE.
         """
 
-    def deserialize(self, slice: Slice) -> Dictionary:
+    @staticmethod
+    def deserialize(bits: int, slice: Slice) -> Dictionary:
         """
-        Deserializes a Dictionary from a Slice.
+        Deserializes Dictionary from ``slice`` with the ``bits`` key length.
         """
 
 class NaN:
@@ -173,13 +192,13 @@ class NaN:
 
 class Continuation:
     """
-    Opaque type representing Contination value on the output stack of TVM invocation.
+    Opaque type representing a Continuation value in the output stack of TVM invocation.
     """
 
 def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
     """
-    Invokes a new instance of TVM with the current continuation cc initialized from Slice code.
-    A stack of values is passed to the instance before execution.
+    Invokes TVM with the current continuation cc initialized from the ``code`` slice and
+    the ``stack`` of values.
 
     Optional parameters:
      - capabilities: int
@@ -188,6 +207,8 @@ def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
      - gas_limit: int
      - gas_credit: int
      - trace: bool
+
+    Returns VmResult.    
     """
 
 class VmResult:
@@ -199,23 +220,33 @@ class VmResult:
 
 def assemble(code: str) -> Cell:
     """
-    Translates a code string in assembler language to a Cell of TVM bytecode.
+    Translates the ``code`` string in assembler language to a Cell of TVM bytecode.
     """
 
 from typing import Tuple
 
 def ed25519_new_keypair() -> Tuple[bytes, bytes]:
     """
+    Generates a new Ed25519 private/public key pair, and returns both the private key
+    and the public key as 32-byte values.
+
+    Example:
+    ```
+        secret, public = ed25519_new_keypair()
+    ```
     """
 
 def ed25519_secret_to_public(secret: bytes) -> bytes:
     """
+    Computes the public key corresponding to the private Ed25519 key ``secret``.
     """
 
 def ed25519_sign(data: bytes, secret: bytes) -> bytes:
     """
+    Signs ``data`` with the Ed25519 private key ``secret`` (a 32-byte value) and returns the signature as a 64-byte value.
     """
 
 def ed25519_check_signature(data: bytes, signature: bytes, public: bytes) -> bool:
     """
+    Checks whether ``signature`` is a valid Ed25519 signature of ``data`` with the public key ``public``.
     """

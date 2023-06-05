@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Tuple
+from typing import Optional, Tuple
 from fractions import Fraction
 
 from .ever_playground import Cell, Builder, Slice, Dictionary, assemble, runvm
@@ -81,21 +81,21 @@ def load_keypair(filename: str) -> Tuple[bytes, bytes]:
         return public, secret
 
 class StateInit:
-    split_depth: int
+    split_depth: Optional[int]
     tick: bool
     tock: bool
-    code: Cell
-    data: Cell
-    library: Dictionary
+    code: Optional[Cell]
+    data: Optional[Cell]
+    library: Optional[Dictionary]
 
     def __init__(
             self,
-            split_depth: int = None,
+            split_depth: Optional[int] = None,
             tick: bool = False,
             tock: bool = False,
-            code: Cell = None,
-            data: Cell = None,
-            library: Dictionary = None):
+            code: Optional[Cell] = None,
+            data: Optional[Cell] = None,
+            library: Optional[Dictionary] = None):
         self.split_depth = split_depth
         self.tick = tick
         self.tock = tock
@@ -107,8 +107,8 @@ class StateInit:
         if s.u(1):
             self.split_depth = s.u(5)
         if s.u(1):
-            self.tick = s.u(1)
-            self.tock = s.u(1)
+            self.tick = bool(s.u(1))
+            self.tock = bool(s.u(1))
         else:
             self.tick = self.tock = False
         if s.u(1):
@@ -140,22 +140,21 @@ class StateInit:
         if self.library is None:
             b.i(1, 0)
         else:
-            b.i(1, 1).s(Slice(self.library.serialize()))
+            b.i(1, 1).b(self.library.serialize())
         return b
 
 class Currency:
     FACTOR = 1000000000
     value: int
 
-    def __init__(self, value: int = None):
+    def __init__(self, value: int = 0):
         if value < 0 or value.bit_length() > 128:
             raise Exception("Currency value must be non-negative and fit into 128 bits")
         self.value = value
 
-    @classmethod
-    def from_str(cls, value: str):
-        value = int(Fraction(value) * Currency.FACTOR)
-        return Currency(value)
+    @staticmethod
+    def from_str(value: str):
+        return Currency(int(Fraction(value) * Currency.FACTOR))
 
     def deserialize(self, s: Slice):
         len = s.u(4)
@@ -163,12 +162,13 @@ class Currency:
             self.value = 0
         else:
             self.value = s.u(len * 8)
+        return self
 
     def serialize(self) -> Builder:
         if self.value == 0:
             return Builder().i(4, 0)
         len = (self.value.bit_length() + 7) >> 3
-        assert(len <= 16)
+        assert(len < 16)
         return Builder().i(4, len).i(len * 8, self.value)
 
     def __str__(self) -> str:

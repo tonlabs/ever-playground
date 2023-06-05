@@ -1,7 +1,7 @@
 mod tests;
 mod utils;
 
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashSet};
 
 use ed25519_dalek::Signer;
 use utils::*;
@@ -41,7 +41,7 @@ impl Cell {
         }
         let slice = SliceData::from_string(&bitstring)
             .map_err(|_| PyRuntimeError::new_err(format!("invalid bitstring \"{}\"", bitstring)))?;
-        let mut b = BuilderData::from_slice(&slice);
+        let mut b = slice.as_builder();
         for arg in args.iter() {
             let cell = arg.extract::<Cell>()?;
             b.checked_append_reference(cell.cell).map_err(runtime_err)?;
@@ -75,8 +75,26 @@ impl Cell {
         let hash = self.cell.repr_hash();
         BigUint::from_bytes_be(hash.as_slice())
     }
-    fn __len__(&self) -> PyResult<usize> {
+    fn cells_count(&self) -> PyResult<usize> {
         self.cell.count_cells(usize::MAX).map_err(runtime_err)
+    }
+    fn unique_cells_count(&self) -> PyResult<usize> {
+        let mut set = HashSet::new();
+        let mut stack = Vec::new();
+        let mut unique_count = 0;
+        stack.push(self.cell.clone());
+        while let Some(cell) = stack.pop() {
+            if set.insert(cell.repr_hash()) {
+                unique_count += 1;
+                for i in 0..cell.references_count() {
+                    stack.push(cell.reference(i).unwrap())
+                }
+            }
+        }
+        Ok(unique_count)
+    }
+    fn __len__(&self) -> PyResult<usize> {
+        self.cells_count()
     }
     fn __str__(&self) -> PyResult<String> {
         PyResult::Ok(dump_cell(self.cell.clone()))
@@ -407,7 +425,7 @@ fn trace_callback(_engine: &Engine, info: &EngineTraceInfo) {
     match info.info_type {
         Start => { }
         Dump =>  println!("DUMP {}", info.cmd_str),
-        Exception => println!("EXCEPTION"),
+        //Exception => println!("EXCEPTION"),
         _ => {
             println!("STEP {} {}", info.step, info.cmd_str);
             println!("GAS {} in total, {} by insn", info.gas_used, info.gas_cmd);

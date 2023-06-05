@@ -1,11 +1,10 @@
 #![cfg(test)]
 
 use crate::{InternalCell, dump_cell};
-use ton_types::{BuilderData, SliceData};
+use ton_types::SliceData;
 
 fn __(data: &str, refs: Vec<InternalCell>) -> ton_types::Result<InternalCell> {
-    let s = SliceData::from_string(data)?;
-    let mut b = BuilderData::from_slice(&s);
+    let mut b = SliceData::from_string(data)?.as_builder();
     for r in refs {
         b.checked_append_reference(r)?;
     }
