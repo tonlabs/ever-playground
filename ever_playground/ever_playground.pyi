@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 class Cell:
     """
@@ -7,6 +7,7 @@ class Cell:
     code) in the TON Blockchain is represented as a collection of TVM
     cells.
     """
+    def __init__(self, *args) -> None: ...
 
     def write(self, flags: int) -> bytes:
         """
@@ -73,6 +74,11 @@ class Slice:
         """
         Returns whether the data of the slice is empty.
         """
+    
+    def remaining_bits(self) -> int:
+        """
+        TODO
+        """
 
 class Builder:
     """
@@ -95,10 +101,10 @@ class Builder:
 
     def i(self, bits: int, integer: int) -> Builder:
         """
-        Appends Builder with ``integer`` of specified bit length ``bits``.
+        Appends Builder with ``integer`` of the ``bits`` length.
         """
 
-    def ib(self, bin: str) -> Builder:
+    def ib(self, binstring: str) -> Builder:
         """
         Appends Builder with an integer from the binary string ``bin``.
         """
@@ -187,43 +193,128 @@ class Dictionary:
 
 class NaN:
     """
+    TODO
     Opaque type representing a special case of the TVM Integer type.
     """
+    def __init__(self) -> None: ...
+
+class Gas:
+    limit: int
+    used: int
+    credit: int
+
+    def __init__(self, limit: int, credit: int) -> None: ...
+
+class ContinuationType:
+    variant: int
+
+    def params_again(self) -> Slice:
+        """TODO"""
+    def params_pushint(self) -> int:
+        """TODO"""
+    def params_quit(self) -> int:
+        """TODO"""
+    def params_repeat(self) -> Tuple[Slice, int]:
+        """TODO"""
+    def params_until(self) -> Slice:
+        """TODO"""
+    def params_while(self) -> Tuple[Slice, Slice]:
+        """TODO"""
+
+    @staticmethod
+    def create_again(body: Slice) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_trycatch() -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_ordinary() -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_pushint(value: int) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_quit(exit_code: int) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_repeat(body: Slice, counter: int) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_until(body: Slice) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_while(body: Slice, cond: Slice) -> ContinuationType:
+        """TODO"""
+    @staticmethod
+    def create_excquit() -> ContinuationType:
+        """TODO"""
+
+class SaveList:
+    def __init__(self) -> None: ...
+    def get(self, index: int) -> object:
+        """TODO"""
+    def put(self, index: int, value: object) -> None:
+        """TODO"""
 
 class Continuation:
     """
+    TODO
     Opaque type representing a Continuation value in the output stack of TVM invocation.
     """
+    typ: ContinuationType
+    code: Slice
+    stack: list
+    savelist: SaveList
+    nargs: int
 
-def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
-    """
-    Invokes TVM with the current continuation cc initialized from the ``code`` slice and
-    the ``stack`` of values.
+    def __init__(
+        self,
+        typ: ContinuationType,
+        code: Slice,
+        stack: list,
+        savelist: SaveList,
+        nargs: int
+    ) -> None: ...
 
-    Optional parameters:
-     - capabilities: int
-     - c4: Cell
-     - c7: list
-     - gas_limit: int
-     - gas_credit: int
-     - trace: bool
+class VmState:
+    cc: Continuation
+    regs: SaveList
+    steps: int
+    gas: Gas
+    committed_c4: Optional[Cell]
+    committed_c5: Optional[Cell]
 
-    Returns VmResult.    
-    """
+    def __init__(self, cc: Continuation, regs: SaveList, gas: Gas) -> None: ...
 
 class VmResult:
-    stack: list
+    state: VmState
     exit_code: int
     exception_value: object
-    steps: int
-    gas_used: int
+
+def runvm_generic(state: VmState, capabilities: int, trace: bool) -> VmResult:
+    """TODO"""
+
+# def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
+#     """
+#     TODO
+#     Invokes TVM with the current continuation cc initialized from the ``code`` slice and
+#     the ``stack`` of values.
+
+#     Optional parameters:
+#      - capabilities: int
+#      - c4: Cell
+#      - c7: list
+#      - gas_limit: int
+#      - gas_credit: int
+#      - trace: bool
+
+#     Returns VmResult.    
+#     """
 
 def assemble(code: str) -> Cell:
     """
     Translates the ``code`` string in assembler language to a Cell of TVM bytecode.
     """
-
-from typing import Tuple
 
 def ed25519_new_keypair() -> Tuple[bytes, bytes]:
     """

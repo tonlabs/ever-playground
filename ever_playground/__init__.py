@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Optional, Tuple
 from fractions import Fraction
 
-from .ever_playground import Cell, Builder, Slice, Dictionary, assemble, runvm
+from .ever_playground import Cell, Builder, Slice, Dictionary, Gas, Continuation, ContinuationType, SaveList, VmState, VmResult, assemble, runvm_generic
 from .ever_playground import ed25519_new_keypair, ed25519_secret_to_public, ed25519_sign, ed25519_check_signature
 
 __all__ = [
@@ -13,6 +13,9 @@ __all__ = [
     "ExceptionCode",
     "StateInit",
     "assemble",
+    "VmState",
+    "VmResult",
+    "runvm_generic",
     "runvm",
     "parse_smc_addr",
     "load_address",
@@ -24,7 +27,41 @@ __all__ = [
     "ed25519_check_signature",
 ]
 
+def runvm(code, stack, **kwargs) -> VmResult:
+    cc = Continuation(
+        ContinuationType.create_ordinary(),
+        code,
+        stack,
+        SaveList(),
+        -1
+    )
+
+    regs = SaveList()
+    capabilities = 0
+    trace = False
+    gas_limit = 1000000000
+    gas_credit = 10000
+    for key, value in kwargs.items():
+        if key == "capabilities":
+            capabilities = int(value)
+        elif key == "trace":
+            trace = bool(value)
+        elif key == "c4":
+            regs.put(4, value)
+        elif key == "c7":
+            regs.put(7, value)
+        elif key == "gas_limit":
+            gas_limit = int(value)
+        elif key == "gas_credit":
+            gas_credit = int(value)
+        else:
+            raise Exception("Unknown parameter {}".format(key))
+
+    state = VmState(cc, regs, Gas(gas_limit, gas_credit))
+    return runvm_generic(state, capabilities, trace)
+
 class ExceptionCode(Enum):
+    """TVM exception code."""
     NormalTermination = 0
     AlternativeTermination = 1
     StackUnderflow = 2
@@ -104,6 +141,7 @@ class StateInit:
         self.library = library
 
     def deserialize(self, s: Slice):
+        """Deserializes StateInit from the ``s`` slice."""
         if s.u(1):
             self.split_depth = s.u(5)
         if s.u(1):
@@ -120,6 +158,7 @@ class StateInit:
         return self
 
     def serialize(self) -> Builder:
+        """Serializes StateInit into Builder."""
         b = Builder()
         if self.split_depth is None:
             b.i(1, 0)
@@ -152,11 +191,13 @@ class Currency:
             raise Exception("Currency value must be non-negative and fit into 128 bits")
         self.value = value
 
-    @staticmethod
-    def from_str(value: str):
+    @classmethod
+    def from_str(cls, value: str):
+        """Constructs a Currency object from a rational number represented by the ``value`` string."""
         return Currency(int(Fraction(value) * Currency.FACTOR))
 
     def deserialize(self, s: Slice):
+        """Deserializes Currency from the ``s`` slice."""
         len = s.u(4)
         if len == 0:
             self.value = 0
@@ -165,6 +206,7 @@ class Currency:
         return self
 
     def serialize(self) -> Builder:
+        """Serializes Currency into Builder."""
         if self.value == 0:
             return Builder().i(4, 0)
         len = (self.value.bit_length() + 7) >> 3

@@ -1,11 +1,20 @@
+use std::sync::Arc;
+use crate::{
+    PyBuilder, PyCell, PyNaN, PySlice,
+    continuations::PyContinuation,
+};
 use num_bigint::{BigInt, BigUint, Sign};
 use pyo3::{
-    prelude::PyResult,
-    PyErr,
     exceptions::PyRuntimeError,
+    prelude::{IntoPy, Python, PyAny, PyObject, PyResult},
+    PyErr,
+    types::{PyList, PyLong},
 };
-
-use ton_types::Cell as InternalCell;
+use ton_types::Cell;
+use ton_vm::stack::{
+    StackItem,
+    integer::{IntegerData, utils::process_value},
+};
 
 macro_rules! err {
     ($error:literal) => {
@@ -87,10 +96,10 @@ fn extend_buffer_be(mut bytes: Vec<u8>, bits: usize, is_negative: bool) -> Vec<u
     }
 }
 
-pub(crate) fn dump_cell_generic(cell: InternalCell, ctor_name: &str, tab: &str) -> String {
+pub(crate) fn dump_cell_generic(cell: Cell, ctor_name: &str, tab: &str) -> String {
     enum Phase {
         // dump indentation, ctor heading and data string
-        Pre(InternalCell, usize),
+        Pre(Cell, usize),
         // dump closing brackets
         Post
     }
@@ -124,7 +133,61 @@ pub(crate) fn dump_cell_generic(cell: InternalCell, ctor_name: &str, tab: &str) 
     output
 }
 
-pub(crate) fn dump_cell(cell: InternalCell) -> String {
+pub(crate) fn dump_cell(cell: Cell) -> String {
     // standard python indentation is 4 spaces
     dump_cell_generic(cell, "C", "    ")
+}
+
+pub(crate) fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
+    if value.is_none() {
+        Ok(StackItem::None)
+    } else if let Ok(v) = value.downcast::<PyLong>() {
+        let integer = IntegerData::from(v.extract::<BigInt>()?)
+            .map_err(runtime_err)?;
+        Ok(StackItem::Integer(Arc::new(integer)))
+    } else if let Ok(v) = value.downcast::<PyList>() {
+        let mut tuple = Vec::new();
+        for item in v {
+            tuple.push(convert_to_vm(item)?)
+        }
+        Ok(StackItem::Tuple(Arc::new(tuple)))
+    } else if let Ok(v) = value.extract::<PyCell>() {
+        Ok(StackItem::Cell(v.cell))
+    } else if let Ok(v) = value.extract::<PySlice>() {
+        Ok(StackItem::Slice(v.slice))
+    } else if let Ok(v) = value.extract::<PyBuilder>() {
+        Ok(StackItem::Builder(Arc::new(v.builder)))
+    } else if let Ok(v) = value.extract::<PyContinuation>() {
+        Ok(StackItem::Continuation(Arc::new(v.cont)))
+    } else {
+        return err!("unsupported value {}", value)
+    }
+}
+
+pub(crate) fn convert_from_vm(py: Python<'_>, item: &StackItem) -> PyObject {
+    match item {
+        StackItem::None =>
+            py.None(),
+        StackItem::Builder(v) =>
+            PyBuilder::new(v.as_ref().clone()).into_py(py),
+        StackItem::Cell(v) =>
+            crate::PyCell::new(v.clone()).into_py(py),
+        StackItem::Continuation(cont) =>
+            PyContinuation::new(cont.as_ref().clone()).into_py(py),
+        StackItem::Integer(v) => {
+            match process_value(v.as_ref(), |v| Ok(v.clone())) {
+                Err(_) => PyNaN::new().into_py(py),
+                Ok(v) => v.into_py(py),
+            }
+        }
+        StackItem::Slice(v) =>
+            PySlice::new(v.clone()).into_py(py),
+        StackItem::Tuple(v) => {
+            let mut list = Vec::new();
+            for item in v.iter() {
+                list.push(convert_from_vm(py, item))
+            }
+            PyList::new(py, list).into_py(py)
+        }
+    }
 }

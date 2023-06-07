@@ -1,41 +1,40 @@
+mod continuations;
+mod crypto;
 mod tests;
 mod utils;
+mod vm;
 
-use std::{sync::Arc, collections::HashSet};
-
-use ed25519_dalek::Signer;
+use std::collections::HashSet;
+use continuations::*;
+use crypto::*;
 use utils::*;
-
+use vm::*;
 use num_bigint::{BigInt, BigUint, Sign};
 use pyo3::{
     prelude::*,
     basic::CompareOp,
     exceptions::PyRuntimeError,
-    types::{PyBytes, PyDict, PyList, PyLong, PyTuple},
+    types::{PyBytes, PyTuple},
 };
+use ton_types::{BuilderData, Cell, HashmapE, HashmapType, SliceData, IBitstring};
 
-use ton_types::{BuilderData, Cell as InternalCell, HashmapE, HashmapType, SliceData, IBitstring};
-use ton_vm::{
-    error::tvm_exception_full,
-    executor::{Engine, EngineTraceInfo, gas::gas_state::Gas},
-    stack::{
-        StackItem, Stack,
-        integer::{IntegerData, utils::process_value},
-        savelist::SaveList,
-    },
-};
-
-#[pyclass]
+#[pyclass(name = "Cell")]
 #[derive(Clone)]
-struct Cell {
-    cell: InternalCell,
+struct PyCell {
+    cell: Cell,
+}
+
+impl PyCell {
+    fn new(cell: Cell) -> Self {
+        Self { cell }
+    }
 }
 
 #[pymethods]
-impl Cell {
+impl PyCell {
     #[new]
     #[pyo3(signature = (bitstring, *args))]
-    fn new(bitstring: String, args: &PyTuple) -> PyResult<Self> {
+    fn create(bitstring: String, args: &PyTuple) -> PyResult<Self> {
         if args.len() > 4 {
             return err!("cell can't contain more than 4 references")
         }
@@ -43,15 +42,15 @@ impl Cell {
             .map_err(|_| PyRuntimeError::new_err(format!("invalid bitstring \"{}\"", bitstring)))?;
         let mut b = slice.as_builder();
         for arg in args.iter() {
-            let cell = arg.extract::<Cell>()?;
+            let cell = arg.extract::<PyCell>()?;
             b.checked_append_reference(cell.cell).map_err(runtime_err)?;
         }
         let cell = b.into_cell().map_err(runtime_err)?;
-        Ok(Self { cell })
+        Ok(Self::new(cell))
     }
-    fn reference(&self, index: usize) -> PyResult<Cell> {
+    fn reference(&self, index: usize) -> PyResult<Self> {
         self.cell.reference(index)
-            .map(|cell| Self { cell })
+            .map(|cell| Self::new(cell))
             .map_err(runtime_err)
     }
     fn write<'a>(&'a self, py: Python<'a>, flags: usize) -> PyResult<&PyBytes> {
@@ -68,7 +67,7 @@ impl Cell {
     #[staticmethod]
     fn read(bytes: Vec<u8>) -> PyResult<Self> {
         ton_types::read_single_root_boc(bytes)
-            .map(|cell| Self { cell })
+            .map(|cell| Self::new(cell))
             .map_err(runtime_err)
     }
     fn repr_hash(&self) -> BigUint {
@@ -93,14 +92,8 @@ impl Cell {
         }
         Ok(unique_count)
     }
-    fn __len__(&self) -> PyResult<usize> {
-        self.cells_count()
-    }
     fn __str__(&self) -> PyResult<String> {
         PyResult::Ok(dump_cell(self.cell.clone()))
-    }
-    fn __bytes__<'a>(&'a self, py: Python<'a>) -> PyResult<&PyBytes> {
-        self.write(py, 0)
     }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
         match op {
@@ -111,18 +104,24 @@ impl Cell {
     }
 }
 
-#[pyclass]
+#[pyclass(name = "Slice")]
 #[derive(Clone)]
-struct Slice {
+struct PySlice {
     slice: SliceData,
 }
 
+impl PySlice {
+    fn new(slice: SliceData) -> Self {
+        Self { slice }
+    }
+}
+
 #[pymethods]
-impl Slice {
+impl PySlice {
     #[new]
-    fn new(cell: Cell) -> PyResult<Self> {
+    fn create(cell: PyCell) -> PyResult<Self> {
         SliceData::load_cell(cell.cell)
-            .map(|slice| Self { slice })
+            .map(Self::new)
             .map_err(runtime_err)
     }
     fn i(&mut self, bits: usize) -> PyResult<BigInt> {
@@ -138,17 +137,17 @@ impl Slice {
     fn refs(&self) -> PyResult<usize> {
         Ok(self.slice.remaining_references())
     }
-    fn r(&mut self) -> PyResult<Cell> {
+    fn r(&mut self) -> PyResult<PyCell> {
         self.slice.checked_drain_reference()
-            .map(|cell| Cell { cell })
+            .map(PyCell::new)
             .map_err(runtime_err)
     }
-    fn r_peek(&self, i: usize) -> PyResult<Cell> {
+    fn r_peek(&self, i: usize) -> PyResult<PyCell> {
         self.slice.reference(i)
-            .map(|cell| Cell { cell })
+            .map(PyCell::new)
             .map_err(runtime_err)
     }
-    fn __len__(&self) -> usize {
+    fn remaining_bits(&self) -> usize {
         self.slice.remaining_bits()
     }
     fn is_empty(&self) -> PyResult<bool> {
@@ -166,24 +165,30 @@ impl Slice {
     }
 }
 
-#[pyclass]
+#[pyclass(name = "Builder")]
 #[derive(Clone, Default)]
-struct Builder {
+struct PyBuilder {
     builder: BuilderData,
 }
 
+impl PyBuilder {
+    fn new(builder: BuilderData) -> Self {
+        Self { builder }
+    }
+}
+
 #[pymethods]
-impl Builder {
+impl PyBuilder {
     #[new]
-    fn new() -> Self {
+    fn create() -> Self {
         Self::default()
     }
-    fn s(mut slf: PyRefMut<Self>, slice: Slice) -> PyResult<PyRefMut<Self>> {
+    fn s(mut slf: PyRefMut<Self>, slice: PySlice) -> PyResult<PyRefMut<Self>> {
         slf.builder.checked_append_references_and_data(&slice.slice)
             .map_err(runtime_err)?;
         Ok(slf)
     }
-    fn b(mut slf: PyRefMut<Self>, builder: Builder) -> PyResult<PyRefMut<Self>> {
+    fn b(mut slf: PyRefMut<Self>, builder: PyBuilder) -> PyResult<PyRefMut<Self>> {
         slf.builder.append_builder(&builder.builder).map_err(runtime_err)?;
         Ok(slf)
     }
@@ -225,23 +230,23 @@ impl Builder {
             .map_err(runtime_err)?;
         Ok(slf)
     }
-    fn r(mut slf: PyRefMut<Self>, cell: Cell) -> PyResult<PyRefMut<Self>> {
+    fn r(mut slf: PyRefMut<Self>, cell: PyCell) -> PyResult<PyRefMut<Self>> {
         slf.builder.checked_append_reference(cell.cell)
             .map_err(runtime_err)?;
         Ok(slf)
     }
-    fn fits(&self, slice: Slice, extra_bits: usize, extra_refs: usize) -> bool {
+    fn fits(&self, slice: PySlice, extra_bits: usize, extra_refs: usize) -> bool {
         self.builder.check_enough_space(slice.slice.remaining_bits() + extra_bits) &&
             self.builder.check_enough_refs(slice.slice.remaining_references() + extra_refs)
     }
-    fn slice(&self) -> PyResult<Slice> {
+    fn slice(&self) -> PyResult<PySlice> {
         SliceData::load_builder(self.builder.clone())
-            .map(|slice| Slice { slice })
+            .map(PySlice::new)
             .map_err(runtime_err)
     }
-    fn finalize(&self) -> PyResult<Cell> {
+    fn finalize(&self) -> PyResult<PyCell> {
         self.builder.clone().into_cell()
-            .map(|cell| Cell { cell })
+            .map(PyCell::new)
             .map_err(runtime_err)
     }
     fn __str__(&self) -> PyResult<String> {
@@ -251,55 +256,61 @@ impl Builder {
     }
 }
 
-#[pyclass]
+#[pyclass(name = "Dictionary")]
 #[derive(Clone)]
-struct Dictionary {
+struct PyDictionary {
     map: HashmapE,
 }
 
+impl PyDictionary {
+    fn new(map: HashmapE) -> Self {
+        Self { map }
+    }
+}
+
 #[pymethods]
-impl Dictionary {
+impl PyDictionary {
     #[new]
-    fn new(bits: usize) -> Self {
+    fn create(bits: usize) -> Self {
         Self { map: HashmapE::with_bit_len(bits) }
     }
     fn bit_len(&self) -> usize {
         self.map.bit_len()
     }
-    fn get(&self, key: Slice, py: Python<'_>) -> PyResult<PyObject> {
+    fn get(&self, key: PySlice, py: Python<'_>) -> PyResult<PyObject> {
         match self.map.get(key.slice).map_err(runtime_err)? {
-            Some(slice) => Ok(Slice { slice }.into_py(py)),
+            Some(slice) => Ok(PySlice::new(slice).into_py(py)),
             None => Ok(py.None())
         }
     }
-    fn add(mut slf: PyRefMut<Self>, key: Slice, value: Slice) -> PyResult<PyRefMut<Self>> {
+    fn add(mut slf: PyRefMut<Self>, key: PySlice, value: PySlice) -> PyResult<PyRefMut<Self>> {
         slf.map.set(key.slice, &value.slice).map_err(runtime_err)?;
         Ok(slf)
     }
-    fn add_kv_slice(mut slf: PyRefMut<Self>, key_bits: usize, mut slice: Slice) -> PyResult<PyRefMut<Self>> {
+    fn add_kv_slice(mut slf: PyRefMut<Self>, key_bits: usize, mut slice: PySlice) -> PyResult<PyRefMut<Self>> {
         let key = slice.slice.get_next_slice(key_bits).map_err(runtime_err)?;
         slf.map.set(key, &slice.slice).map_err(runtime_err)?;
         Ok(slf)
     }
-    fn cell(&self) -> PyResult<Cell> {
+    fn cell(&self) -> PyResult<PyCell> {
         self.map.data()
-            .map(|cell| Cell { cell: cell.clone() })
+            .map(|cell| PyCell { cell: cell.clone() })
             .ok_or(PyRuntimeError::new_err("empty dictionary"))
     }
-    fn serialize(&self) -> PyResult<Builder> {
+    fn serialize(&self) -> PyResult<PyBuilder> {
         let mut builder = BuilderData::new();
         self.map.write_hashmap_data(&mut builder).map_err(runtime_err)?;
-        Ok(Builder { builder })
+        Ok(PyBuilder::new(builder))
     }
     #[staticmethod]
-    fn deserialize(bits: usize, slice: &mut Slice) -> PyResult<Self> {
+    fn deserialize(bits: usize, slice: &mut PySlice) -> PyResult<Self> {
         let map = if slice.slice.get_next_bit().map_err(runtime_err)? {
             let cell = slice.slice.checked_drain_reference().map_err(runtime_err)?;
             HashmapE::with_hashmap(bits, Some(cell))
         } else {
             HashmapE::with_hashmap(bits, None)
         };
-        Ok(Dictionary { map })
+        Ok(Self::new(map))
     }
     fn __len__(&self) -> PyResult<usize> {
         self.map.count(usize::MAX).map_err(runtime_err)
@@ -313,257 +324,45 @@ impl Dictionary {
 }
 
 #[pyfunction]
-fn assemble(code: String) -> PyResult<Cell> {
-    let cell = ton_labs_assembler::compile_code(&code)
-        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?
-        .cell()
-        .clone();
-    Ok(Cell { cell })
+fn assemble(code: String) -> PyResult<PyCell> {
+    let slice = ton_labs_assembler::compile_code(&code)
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+    Ok(PyCell::new(slice.cell().clone()))
 }
 
-struct VmParams {
-    capabilites: u64,
-    c4: Option<StackItem>,
-    c7: Option<StackItem>,
-    gas_limit: i64,
-    gas_credit: i64,
-    trace: bool,
+#[pyclass(name = "NaN")]
+struct PyNaN {
 }
 
-impl Default for VmParams {
-    fn default() -> Self {
-        Self {
-            capabilites: 0x537ae,
-            c4: None,
-            c7: None,
-            gas_limit: 1000000000,
-            gas_credit: 0,
-            trace: false,
-        }
-    }
-}
-
-impl VmParams {
-    fn new(dict: &PyDict) -> PyResult<Self> {
-        let mut params = Self::default();
-        for (key, val) in dict {
-            match key.extract::<String>()?.as_str() {
-                "capabilities" => params.capabilites = val.extract::<u64>()?,
-                "c4" => params.c4 = Some(convert_to_vm(val)?),
-                "c7" => params.c7 = Some(convert_to_vm(val)?),
-                "gas_limit" => params.gas_limit = val.extract::<i64>()?,
-                "gas_credit" => params.gas_credit = val.extract::<i64>()?,
-                "trace" => params.trace = val.extract::<bool>()?,
-                p => return err!("unknown vm parameter {}", p)
-            }
-        }
-        Ok(params)
-    }
-}
-
-#[pyclass(get_all)]
-#[derive(Default)]
-struct VmResult {
-    stack: Option<PyObject>,
-    exit_code: i32,
-    exception_value: Option<PyObject>,
-    steps: u32,
-    gas_used: i64,
-}
-
-#[pyfunction]
-#[pyo3(signature = (code, in_stack, **kwargs))]
-fn runvm(code: Slice, in_stack: &PyList, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
-    let py = in_stack.py();
-    let mut vm_stack = Stack::new();
-    for item in in_stack.iter() {
-        vm_stack.push(convert_to_vm(item)?);
-    }
-
-    let params = match kwargs {
-        None => VmParams::default(),
-        Some(dict) => VmParams::new(dict)?
-    };
-
-    let mut result = VmResult::default();
-    let mut ctrls = SaveList::new();
-    if let Some(mut c4) = params.c4 {
-        ctrls.put(4, &mut c4).map_err(runtime_err)?;
-    }
-    if let Some(mut c7) = params.c7 {
-        ctrls.put(7, &mut c7).map_err(runtime_err)?;
-    }
-    let gas = Gas::new(params.gas_limit, params.gas_credit, 1000000000, 10);
-    let mut engine = Engine::with_capabilities(params.capabilites)
-        .setup(code.slice, Some(ctrls), Some(vm_stack), Some(gas));
-    if params.trace {
-        engine.set_trace_callback(trace_callback);
-    }
-    match engine.execute() {
-        Ok(exit_code) => result.exit_code = exit_code,
-        Err(err) => if let Some(exception) = tvm_exception_full(&err) {
-            result.exit_code = exception.exception_or_custom_code();
-            result.exception_value = Some(convert_from_vm(py, &exception.value)?);
-        } else {
-            return Err(PyRuntimeError::new_err(format!("execution failed: {}", err)))
-        }
-    }
-
-    let mut out_stack = Vec::new();
-    for item in engine.stack().iter() {
-        out_stack.push(convert_from_vm(py, item)?)
-    }
-
-    result.stack = Some(PyList::new(py, out_stack).to_object(py));
-    result.steps = engine.steps();
-    result.gas_used = engine.gas_used();
-    Ok(result.into_py(py))
-}
-
-fn trace_callback(_engine: &Engine, info: &EngineTraceInfo) {
-    use ton_vm::executor::EngineTraceInfoType::*;
-    match info.info_type {
-        Start => { }
-        Dump =>  println!("DUMP {}", info.cmd_str),
-        //Exception => println!("EXCEPTION"),
-        _ => {
-            println!("STEP {} {}", info.step, info.cmd_str);
-            println!("GAS {} in total, {} by insn", info.gas_used, info.gas_cmd);
-            if info.stack.is_empty() {
-                println!("STACK <empty>")
-            } else {
-                for item in info.stack.iter() {
-                    println!("STACK {}", item)
-                }
-            }
-            println!()
-        }
-    }
-}
-
-fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
-    if value.is_none() {
-        Ok(StackItem::None)
-    } else if let Ok(v) = value.downcast::<PyLong>() {
-        let integer = IntegerData::from(v.extract::<BigInt>()?)
-            .map_err(runtime_err)?;
-        Ok(StackItem::Integer(Arc::new(integer)))
-    } else if let Ok(v) = value.downcast::<PyList>() {
-        let mut tuple = Vec::new();
-        for item in v {
-            tuple.push(convert_to_vm(item)?)
-        }
-        Ok(StackItem::Tuple(Arc::new(tuple)))
-    } else if let Ok(v) = value.extract::<Cell>() {
-        Ok(StackItem::Cell(v.cell))
-    } else if let Ok(v) = value.extract::<Slice>() {
-        Ok(StackItem::Slice(v.slice))
-    } else if let Ok(v) = value.extract::<Builder>() {
-        Ok(StackItem::Builder(Arc::new(v.builder)))
-    } else {
-        return err!("unsupported value {}", value)
-    }
-}
-
-#[pyclass]
-struct NaN {
-}
-
-impl NaN {
+impl PyNaN {
     fn new() -> Self {
         Self { }
     }
 }
 
-#[pyclass]
-struct Continuation {
-}
-
-impl Continuation {
-    fn new() -> Self {
-        Self { }
+#[pymethods]
+impl PyNaN {
+    #[new]
+    fn create() -> Self {
+        Self::new()
     }
-}
-
-fn convert_from_vm(py: Python<'_>, item: &StackItem) -> PyResult<PyObject> {
-    match item {
-        StackItem::None =>
-            Ok(py.None()),
-        StackItem::Builder(v) =>
-            Ok(Builder { builder: v.as_ref().clone() }.into_py(py)),
-        StackItem::Cell(v) =>
-            Ok(Cell { cell: v.clone() }.into_py(py)),
-        StackItem::Continuation(_) =>
-            Ok(Continuation::new().into_py(py)),
-        StackItem::Integer(v) => {
-            let integer = match process_value(v.as_ref(), |v| Ok(v.clone())) {
-                Err(_) => NaN::new().into_py(py),
-                Ok(v) => v.into_py(py),
-            };
-            Ok(integer)
-        }
-        StackItem::Slice(v) =>
-            Ok(Slice { slice: v.clone() }.into_py(py)),
-        StackItem::Tuple(v) => {
-            let mut list = Vec::new();
-            for item in v.iter() {
-                list.push(convert_from_vm(py, item)?)
-            }
-            Ok(PyList::new(py, list).into_py(py))
-        }
-    }
-}
-
-#[pyfunction]
-fn ed25519_new_keypair<'a>(py: Python<'a>) -> PyResult<&PyTuple> {
-    let mut csprng = rand::thread_rng();
-    let keypair = ed25519_dalek::Keypair::generate(&mut csprng);
-    Ok(PyTuple::new(py, vec!(
-        PyBytes::new(py, keypair.secret.as_bytes()),
-        PyBytes::new(py, keypair.public.as_bytes()),
-    )))
-}
-
-fn load_secret(secret: &PyBytes) -> PyResult<ed25519_dalek::SecretKey> {
-    let secret = ed25519_dalek::SecretKey::from_bytes(secret.as_bytes())
-        .map_err(|err| PyRuntimeError::new_err(format!("invalid secret bytes: {}", err)))?;
-    Ok(secret)
-}
-
-#[pyfunction]
-fn ed25519_secret_to_public<'a>(secret: &'a PyBytes, py: Python<'a>) -> PyResult<&'a PyBytes> {
-    let secret = load_secret(secret)?;
-    let public = ed25519_dalek::PublicKey::from(&secret);
-    Ok(PyBytes::new(py, public.as_bytes()))
-}
-
-#[pyfunction]
-fn ed25519_sign<'a>(data: &'a PyBytes, secret: &'a PyBytes, py: Python<'a>) -> PyResult<&'a PyBytes> {
-    let secret = load_secret(secret)?;
-    let public = ed25519_dalek::PublicKey::from(&secret);
-    let keypair = ed25519_dalek::Keypair { secret, public };
-    let signature = &keypair.sign(data.as_bytes()).to_bytes()[0..];
-    Ok(PyBytes::new(py, signature))
-}
-
-#[pyfunction]
-fn ed25519_check_signature<'a>(data: &'a PyBytes, signature: &'a PyBytes, public: &'a PyBytes) -> bool {
-    let Ok(public) = ed25519_dalek::PublicKey::from_bytes(public.as_bytes()) else { return false };
-    let Ok(signature) = ed25519_dalek::Signature::from_bytes(signature.as_bytes()) else { return false };
-    public.verify_strict(data.as_bytes(), &signature).is_ok()
 }
 
 #[pymodule]
 fn ever_playground(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<NaN>()?;
-    m.add_class::<Cell>()?;
-    m.add_class::<Builder>()?;
-    m.add_class::<Slice>()?;
-    m.add_class::<Dictionary>()?;
-    m.add_class::<Continuation>()?;
-    m.add_class::<VmResult>()?;
+    m.add_class::<PyNaN>()?;
+    m.add_class::<PyCell>()?;
+    m.add_class::<PyBuilder>()?;
+    m.add_class::<PySlice>()?;
+    m.add_class::<PyDictionary>()?;
+    m.add_class::<PySaveList>()?;
+    m.add_class::<PyContinuationType>()?;
+    m.add_class::<PyContinuation>()?;
+    m.add_class::<PyGas>()?;
+    m.add_class::<PyVmState>()?;
+    m.add_class::<PyVmResult>()?;
     m.add_wrapped(wrap_pyfunction!(assemble))?;
-    m.add_wrapped(wrap_pyfunction!(runvm))?;
+    m.add_wrapped(wrap_pyfunction!(runvm_generic))?;
     m.add_wrapped(wrap_pyfunction!(ed25519_new_keypair))?;
     m.add_wrapped(wrap_pyfunction!(ed25519_secret_to_public))?;
     m.add_wrapped(wrap_pyfunction!(ed25519_sign))?;

@@ -24,7 +24,7 @@ expect(True, s.is_empty())
 val3 = 0xffffffff
 s = S(B().i(32, val3).finalize())
 expect(-1, s.i(23))
-expect(9, len(s))
+expect(9, s.remaining_bits())
 
 d1_wc, d1_addr = parse_smc_addr("0:000169b042c37962027e58de0dbaa0b85f5d032f37d8333e3cdfdcc7918ae00a")
 d2_wc, d2_addr = parse_smc_addr("0:bc43df2056abee4c1a443fbfcfede0ba90d214c77322167fc08ce48920c17c1b")
@@ -66,7 +66,6 @@ C("c_",
 expect(c, dict_cell1)
 
 dict_bytes = dict_cell1.write(0)
-dict_bytes = bytes(dict_cell1)
 dict_cell2 = C.read(dict_bytes)
 #print(dict_cell2)
 

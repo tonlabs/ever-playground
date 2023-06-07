@@ -3,7 +3,7 @@ import time
 from ever_playground import Cell as C
 from ever_playground import Slice as S
 from ever_playground import ExceptionCode
-from ever_playground import StateInit, runvm, assemble
+from ever_playground import StateInit, VmState, runvm, assemble
 
 def expect(expected, v):
     if not expected == v:
@@ -13,13 +13,13 @@ add = assemble("""
     ADD
 """)
 res = runvm(S(add), [10, 20], capabilities = 0x1)
-expect([30], res.stack)
+expect([30], res.state.cc.stack)
 
 throw = assemble("THROW 100")
 res = runvm(S(throw), [10])
 expect(100, res.exit_code)
 expect(0, res.exception_value)
-expect([10], res.stack)
+expect([10], res.state.cc.stack)
 
 sib = StateInit(code = throw).serialize()
 #print(sib)
@@ -36,12 +36,12 @@ throwargany = assemble("NEWC ENDC PUSHINT 100 THROWARGANY")
 res = runvm(S(throwargany), [], trace = True)
 expect(100, res.exit_code)
 expect(C(""), res.exception_value)
-expect([], res.stack)
+expect([], res.state.cc.stack)
 
 ctrls_ex = assemble("PUSHCTR c4")
 abc = C("abc")
 res = runvm(S(ctrls_ex), [], c4 = abc)
-expect([abc], res.stack)
+expect([abc], res.state.cc.stack)
 
 loop = """
     PUSHINT 0x8de120e0abffc55bf3fc723dee9e6d6bc01716064312a4e4be58be4e193fda8d
@@ -61,7 +61,7 @@ chksignu_loop = assemble(loop.format(10000, "CHKSIGNU"))
 blkdrop2_loop = assemble(loop.format(1000000, "BLKDROP 2"))
 
 res = runvm(S(chksignu_loop), [], gas_limit = 100000)
-expect(ExceptionCode.OutOfGas.value, res.exit_code) # out of gas
+expect(ExceptionCode.OutOfGas.value, res.exit_code)
 
 def benchmark(name, code_cell, iters, steps = None, gas_used = None):
     print("running {}".format(name))
@@ -71,9 +71,9 @@ def benchmark(name, code_cell, iters, steps = None, gas_used = None):
 
     expect(0, res.exit_code)
     if steps:
-        expect(steps, res.steps)
+        expect(steps, res.state.steps)
     if gas_used:
-        expect(gas_used, res.gas_used)
+        expect(gas_used, res.state.gas.used)
 
     print("total time {:.2f}s".format(elapsed))
     print("one iteration takes {:.2f}us".format(elapsed * 1000000 / iters))

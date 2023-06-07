@@ -53,8 +53,11 @@ def bench_by_cmps_count(filler):
         res2 = runvm(Slice(code2), [target_func_id])
         assert(res2.exit_code == 0)
 
-        ratio = float(res2.gas_used) / res1.gas_used
-        print(f"{i+1:<4} {len(code1):<2} {res1.gas_used:8}    {len(code2):<2} {res2.gas_used:<14} {ratio:.2f}")
+        gas1 = res1.state.gas.used
+        gas2 = res2.state.gas.used
+
+        ratio = float(gas2) / gas1
+        print(f"{i+1:<4} {code1.cells_count():<2} {gas1:8}    {code2.cells_count():<2} {gas2:<14} {ratio:.2f}")
 
 for i in [0, 16, 64]:
     print(f"ifjmp body has {i} nops before call")

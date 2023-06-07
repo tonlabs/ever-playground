@@ -79,7 +79,6 @@ def create_order(c: Cell, send_mode: int) -> Cell:
     return Builder().i(8, send_mode).r(c).finalize()
 
 def send(address: str, ng: Currency, bounce: bool):
-    global send_mode
     t = create_simple_transfer(address, ng, bounce)
     order = create_order(t, send_mode)
     add_order(Slice(order))
