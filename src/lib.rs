@@ -109,7 +109,7 @@ impl PyCell {
 }
 
 #[pyclass(name = "Slice")]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct PySlice {
     slice: SliceData,
 }

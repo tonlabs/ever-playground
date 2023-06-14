@@ -94,8 +94,12 @@ def test_highload_wallet_v2():
 def test_ifjmp_perf_eval():
     run(["python3", "examples/ifjmp-perf-eval.py"])
 
+def run_runcont():
+    run(["python3", "examples/runcont.py"])
+
 run_basics()
 run_runvm()
+run_runcont()
 test_recover_stake()
 test_testgiver()
 test_validator_elect_req()

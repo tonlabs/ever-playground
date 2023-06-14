@@ -1,4 +1,4 @@
-use crate::{err, PySlice, utils::{convert_from_vm, convert_to_vm}};
+use crate::{err, PySlice, runtime_err, utils::{convert_from_vm, convert_to_vm}};
 use pyo3::{
     prelude::*,
     basic::CompareOp,
@@ -10,16 +10,10 @@ use ton_vm::stack::{
     savelist::SaveList
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[pyclass(name = "SaveList")]
 pub(crate) struct PySaveList {
     pub(crate) savelist: SaveList
-}
-
-impl Default for PySaveList {
-    fn default() -> Self {
-        Self { savelist: SaveList::new() }
-    }
 }
 
 impl PySaveList {
@@ -36,7 +30,11 @@ impl PySaveList {
     }
     fn get(&self, py: Python<'_>, index: usize) -> Option<PyObject> {
         let item = self.savelist.get(index)?;
-        Some(convert_from_vm(py, item))
+        convert_from_vm(py, item).ok()
+    }
+    fn put(&mut self, py: Python<'_>, index: usize, value: PyObject) -> PyResult<()> {
+        let mut item = convert_to_vm(value.as_ref(py))?;
+        self.savelist.put(index, &mut item).map(|_| ()).map_err(runtime_err)
     }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
         match op {
@@ -65,7 +63,7 @@ impl PySaveList {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[pyclass(name = "ContinuationType")]
 pub(crate) struct PyContinuationType {
     typ: ContinuationType
@@ -197,74 +195,89 @@ impl PyContinuationType {
 }
 
 #[derive(Clone)]
-#[pyclass(name = "Continuation")]
+#[pyclass(name = "Continuation", get_all, set_all)]
 pub(crate) struct PyContinuation {
-    pub(crate) cont: ContinuationData
-}
-
-impl Default for PyContinuation {
-    fn default() -> Self {
-        Self { cont: ContinuationData::new_empty() }
-    }
+    typ: Py<PyContinuationType>,
+    code: Py<PySlice>,
+    stack: PyObject,
+    savelist: Py<PySaveList>,
+    nargs: PyObject,
 }
 
 impl PyContinuation {
-    pub(crate) fn new(cont: ContinuationData) -> Self {
-        Self { cont }
+    pub(crate) fn new(py: Python<'_>, cont: &ContinuationData) -> PyResult<Self> {
+        let typ = PyContinuationType::new(cont.type_of.clone());
+        let code = PySlice::new(cont.code().clone());
+        let mut stack = Vec::new();
+        for item in cont.stack.iter() {
+            stack.push(convert_from_vm(py, item)?)
+        }
+        let savelist = PySaveList::new(cont.savelist.clone());
+        Ok(Self {
+            typ: Py::new(py, typ)?,
+            code: Py::new(py, code)?,
+            stack: PyList::new(py, stack).to_object(py),
+            savelist: Py::new(py, savelist)?,
+            nargs: cont.nargs.to_object(py),
+        })
+    }
+    pub(crate) fn cont(&self, py: Python<'_>) -> PyResult<ContinuationData> {
+        let mut cont = ContinuationData::with_type(
+            self.typ.extract::<PyContinuationType>(py)?.typ);
+        *cont.code_mut() = self.code.extract::<PySlice>(py)?.slice;
+        for v in self.stack.extract::<&PyList>(py)? {
+            cont.stack.push(convert_to_vm(v)?);
+        }
+        cont.savelist = self.savelist.extract::<PySaveList>(py)?.savelist;
+        cont.nargs = self.nargs.extract::<isize>(py)?;
+        Ok(cont)
     }
 }
 
 #[pymethods]
 impl PyContinuation {
     #[new]
+    #[pyo3(signature = (
+        typ = PyContinuationType::default(),
+        code = PySlice::default(),
+        stack = Vec::new(),
+        savelist = PySaveList::default(),
+        nargs = -1,
+    ))]
     fn create(
+        py: Python<'_>,
         typ: PyContinuationType,
         code: PySlice,
-        stack: &PyList,
+        stack: Vec<PyObject>,
         savelist: PySaveList,
         nargs: isize,
     ) -> PyResult<Self> {
-        let mut cdata = ContinuationData::with_type(typ.typ);
-        *cdata.code_mut() = code.slice;
-        for item in stack.iter() {
-            cdata.stack.push(convert_to_vm(item)?);
-        }
-        cdata.savelist = savelist.savelist;
-        cdata.nargs = nargs;
-        Ok(Self::new(cdata))
-    }
-    #[getter]
-    fn typ(&self) -> PyContinuationType {
-        PyContinuationType::new(self.cont.type_of.clone())
-    }
-    #[getter]
-    fn code(&self) -> PySlice {
-        PySlice::new(self.cont.code().clone())
-    }
-    #[getter]
-    fn stack(&self, py: Python<'_>) -> PyObject {
-        let mut stack = Vec::new();
-        for item in self.cont.stack.iter() {
-            stack.push(convert_from_vm(py, item))
-        }
-        PyList::new(py, stack).to_object(py)
-    }
-    #[getter]
-    fn savelist(&self) -> PySaveList {
-        PySaveList::new(self.cont.savelist.clone())
-    }
-    #[getter]
-    fn nargs(&self) -> isize {
-        self.cont.nargs
+        Ok(Self {
+            typ: Py::new(py, typ)?,
+            code: Py::new(py, code)?,
+            stack: PyList::new(py, stack).to_object(py),
+            savelist: Py::new(py, savelist)?,
+            nargs: nargs.to_object(py),
+        })
     }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        let self_cont = if let Ok(c) = self.cont(py) {
+            c
+        } else {
+            return false.to_object(py)
+        };
+        let other_cont = if let Ok(c) = other.cont(py) {
+            c
+        } else {
+            return false.to_object(py)
+        };
         match op {
-            CompareOp::Eq => self.cont.eq(&other.cont).into_py(py),
-            CompareOp::Ne => self.cont.ne(&other.cont).into_py(py),
+            CompareOp::Eq => self_cont.eq(&other_cont).into_py(py),
+            CompareOp::Ne => self_cont.ne(&other_cont).into_py(py),
             _ => py.NotImplemented(),
         }
     }
-    fn __str__(&self) -> PyResult<String> {
-        Ok(self.cont.to_string())
+    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(self.cont(py)?.to_string())
     }
 }

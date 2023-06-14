@@ -138,7 +138,6 @@ pub(crate) fn dump_cell(cell: Cell) -> String {
     dump_cell_generic(cell, "C", "    ")
 }
 
-#[allow(unused)]
 pub(crate) fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
     if value.is_none() {
         Ok(StackItem::None)
@@ -161,36 +160,36 @@ pub(crate) fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
     } else if let Ok(v) = value.extract::<PyBuilder>() {
         Ok(StackItem::Builder(Arc::new(v.builder)))
     } else if let Ok(v) = value.extract::<PyContinuation>() {
-        Ok(StackItem::Continuation(Arc::new(v.cont)))
+        Ok(StackItem::Continuation(Arc::new(v.cont(value.py())?)))
     } else {
         return err!("unsupported value {}", value)
     }
 }
 
-pub(crate) fn convert_from_vm(py: Python<'_>, item: &StackItem) -> PyObject {
+pub(crate) fn convert_from_vm(py: Python<'_>, item: &StackItem) -> PyResult<PyObject> {
     match item {
         StackItem::None =>
-            py.None(),
+            Ok(py.None()),
         StackItem::Builder(v) =>
-            PyBuilder::new(v.as_ref().clone()).into_py(py),
+            Ok(PyBuilder::new(v.as_ref().clone()).into_py(py)),
         StackItem::Cell(v) =>
-            crate::PyCell::new(v.clone()).into_py(py),
+            Ok(crate::PyCell::new(v.clone()).into_py(py)),
         StackItem::Continuation(cont) =>
-            PyContinuation::new(cont.as_ref().clone()).into_py(py),
+            Ok(PyContinuation::new(py, cont.as_ref())?.into_py(py)),
         StackItem::Integer(v) => {
             match process_value(v.as_ref(), |v| Ok(v.clone())) {
-                Err(_) => PyNaN::new().into_py(py),
-                Ok(v) => v.into_py(py),
+                Err(_) => Ok(PyNaN::new().into_py(py)),
+                Ok(v) => Ok(v.into_py(py)),
             }
         }
         StackItem::Slice(v) =>
-            PySlice::new(v.clone()).into_py(py),
+            Ok(PySlice::new(v.clone()).into_py(py)),
         StackItem::Tuple(v) => {
             let mut list = Vec::new();
             for item in v.iter() {
-                list.push(convert_from_vm(py, item))
+                list.push(convert_from_vm(py, item)?)
             }
-            PyList::new(py, list).into_py(py)
+            Ok(PyList::new(py, list).into_py(py))
         }
     }
 }

@@ -46,7 +46,7 @@ impl PyGas {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 #[pyclass(get_all, name = "VmState")]
 pub(crate) struct PyVmState {
     cc: PyContinuation,
@@ -82,7 +82,6 @@ impl PyVmState {
     }
 }
 
-#[derive(Default)]
 #[pyclass(get_all, name = "VmResult")]
 pub(crate) struct PyVmResult {
     state: PyVmState,
@@ -93,21 +92,23 @@ pub(crate) struct PyVmResult {
 #[pyfunction]
 #[pyo3(signature = (state, capabilities = 0, trace = false))]
 pub(crate) fn runvm_generic(py: Python<'_>, state: PyVmState, capabilities: u64, trace: bool) -> PyResult<PyObject> {
+    let cc = state.cc.cont(py)?;
     let mut engine = Engine::with_capabilities(capabilities).setup(
-        state.cc.cont.code().clone(),
+        cc.code().clone(),
         Some(state.regs.savelist),
-        Some(state.cc.cont.stack),
+        Some(cc.stack),
         Some(state.gas.gas)
     );
     if trace {
         engine.set_trace_callback(trace_callback);
     }
-    let mut result = PyVmResult::default();
+    let exit_code;
+    let mut exception_value = None;
     match engine.execute() {
-        Ok(exit_code) => result.exit_code = exit_code,
+        Ok(code) => exit_code = code,
         Err(err) => if let Some(exception) = tvm_exception_full(&err) {
-            result.exit_code = exception.exception_or_custom_code();
-            result.exception_value = Some(convert_from_vm(py, &exception.value));
+            exit_code = exception.exception_or_custom_code();
+            exception_value = Some(convert_from_vm(py, &exception.value)?);
         } else {
             return Err(PyRuntimeError::new_err(format!("execution failed: {}", err)))
         }
@@ -124,14 +125,19 @@ pub(crate) fn runvm_generic(py: Python<'_>, state: PyVmState, capabilities: u64,
         (None, None)
     };
 
-    result.state = PyVmState::new(
-        PyContinuation::new(engine.cc().clone()),
+    let result_state = PyVmState::new(
+        PyContinuation::new(py, engine.cc())?,
         PySaveList::new(engine.ctrls().clone()),
         engine.steps(),
         PyGas::new(engine.get_gas().clone()),
         committed_c4,
         committed_c5,
     );
+    let result = PyVmResult {
+        state: result_state,
+        exit_code,
+        exception_value,
+    };
     Ok(result.into_py(py))
 }
 
