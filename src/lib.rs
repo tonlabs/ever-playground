@@ -48,6 +48,10 @@ impl PyCell {
         let cell = b.into_cell().map_err(runtime_err)?;
         Ok(Self::new(cell))
     }
+    #[staticmethod]
+    fn empty() -> Self {
+        Self::new(Cell::default())
+    }
     fn reference(&self, index: usize) -> PyResult<Self> {
         self.cell.reference(index)
             .map(|cell| Self::new(cell))
@@ -93,7 +97,7 @@ impl PyCell {
         Ok(unique_count)
     }
     fn __str__(&self) -> PyResult<String> {
-        PyResult::Ok(dump_cell(self.cell.clone()))
+        Ok(dump_cell(self.cell.clone()))
     }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
         match op {
@@ -330,6 +334,7 @@ fn assemble(code: String) -> PyResult<PyCell> {
     Ok(PyCell::new(slice.cell().clone()))
 }
 
+#[derive(Clone)]
 #[pyclass(name = "NaN")]
 struct PyNaN {
 }
@@ -344,7 +349,15 @@ impl PyNaN {
 impl PyNaN {
     #[new]
     fn create() -> Self {
-        Self::new()
+        PyNaN::new()
+    }
+    // TODO consider making PyNaN a singleton instead
+    fn __richcmp__(&self, _other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        match op {
+            CompareOp::Eq => true.into_py(py),
+            CompareOp::Ne => false.into_py(py),
+            _ => py.NotImplemented(),
+        }
     }
 }
 

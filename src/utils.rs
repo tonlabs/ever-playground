@@ -138,6 +138,7 @@ pub(crate) fn dump_cell(cell: Cell) -> String {
     dump_cell_generic(cell, "C", "    ")
 }
 
+#[allow(unused)]
 pub(crate) fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
     if value.is_none() {
         Ok(StackItem::None)
@@ -145,6 +146,8 @@ pub(crate) fn convert_to_vm(value: &PyAny) -> PyResult<StackItem> {
         let integer = IntegerData::from(v.extract::<BigInt>()?)
             .map_err(runtime_err)?;
         Ok(StackItem::Integer(Arc::new(integer)))
+    } else if let Ok(_) = value.extract::<crate::PyNaN>() {
+        Ok(StackItem::Integer(Arc::new(IntegerData::nan())))
     } else if let Ok(v) = value.downcast::<PyList>() {
         let mut tuple = Vec::new();
         for item in v {

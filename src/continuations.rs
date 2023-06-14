@@ -1,9 +1,7 @@
-use crate::{
-    err, PySlice,
-    utils::{convert_from_vm, convert_to_vm, runtime_err},
-};
+use crate::{err, PySlice, utils::{convert_from_vm, convert_to_vm}};
 use pyo3::{
     prelude::*,
+    basic::CompareOp,
     types::PyList,
     exceptions::PyRuntimeError,
 };
@@ -40,9 +38,30 @@ impl PySaveList {
         let item = self.savelist.get(index)?;
         Some(convert_from_vm(py, item))
     }
-    fn put(&mut self, py: Python<'_>, index: usize, value: PyObject) -> PyResult<()> {
-        let mut item = convert_to_vm(value.as_ref(py))?;
-        self.savelist.put(index, &mut item).map(|_| ()).map_err(runtime_err)
+    fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        match op {
+            CompareOp::Eq => self.savelist.eq(&other.savelist).into_py(py),
+            CompareOp::Ne => self.savelist.ne(&other.savelist).into_py(py),
+            _ => py.NotImplemented(),
+        }
+    }
+    fn __str__(&self) -> PyResult<String> {
+        let mut res = String::new();
+        let mut empty = true;
+        for i in SaveList::REGS {
+            if self.savelist.get(i).is_some() {
+                if !empty {
+                    res += " ";
+                } else {
+                    empty = false;
+                }
+                res += &format!("c{}", i);
+            }
+        }
+        if empty {
+            res += "empty";
+        }
+        Ok(res)
     }
 }
 
@@ -154,6 +173,27 @@ impl PyContinuationType {
     fn create_excquit() -> Self {
         Self::new(ContinuationType::ExcQuit)
     }
+    fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        match op {
+            CompareOp::Eq => self.typ.eq(&other.typ).into_py(py),
+            CompareOp::Ne => self.typ.ne(&other.typ).into_py(py),
+            _ => py.NotImplemented(),
+        }
+    }
+    fn __str__(&self) -> PyResult<String> {
+        let str = match self.typ {
+            ContinuationType::AgainLoopBody(_) => "Again",
+            ContinuationType::TryCatch => "TryCatch",
+            ContinuationType::Ordinary => "Ordinary",
+            ContinuationType::PushInt(_) => "PushInt",
+            ContinuationType::Quit(_) => "Quit",
+            ContinuationType::RepeatLoopBody(_, _) => "Repeat",
+            ContinuationType::UntilLoopCondition(_) => "Until",
+            ContinuationType::WhileLoopCondition(_, _) => "While",
+            ContinuationType::ExcQuit => "ExcQuit",
+        };
+        Ok(str.to_string())
+    }
 }
 
 #[derive(Clone)]
@@ -216,5 +256,15 @@ impl PyContinuation {
     #[getter]
     fn nargs(&self) -> isize {
         self.cont.nargs
+    }
+    fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
+        match op {
+            CompareOp::Eq => self.cont.eq(&other.cont).into_py(py),
+            CompareOp::Ne => self.cont.ne(&other.cont).into_py(py),
+            _ => py.NotImplemented(),
+        }
+    }
+    fn __str__(&self) -> PyResult<String> {
+        Ok(self.cont.to_string())
     }
 }

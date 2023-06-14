@@ -3,7 +3,7 @@ import time
 from ever_playground import Cell as C
 from ever_playground import Slice as S
 from ever_playground import ExceptionCode
-from ever_playground import StateInit, VmState, runvm, assemble
+from ever_playground import StateInit, runvm, assemble
 
 def expect(expected, v):
     if not expected == v:

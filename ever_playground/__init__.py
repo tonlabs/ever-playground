@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Optional, Tuple
 from fractions import Fraction
 
-from .ever_playground import Cell, Builder, Slice, Dictionary, Gas, Continuation, ContinuationType, SaveList, VmState, VmResult, assemble, runvm_generic
+from .ever_playground import Cell, Builder, Slice, Dictionary, NaN, Gas, Continuation, ContinuationType, SaveList, VmState, VmResult, assemble, runvm_generic
 from .ever_playground import ed25519_new_keypair, ed25519_secret_to_public, ed25519_sign, ed25519_check_signature
 
 __all__ = [
@@ -10,9 +10,14 @@ __all__ = [
     "Builder",
     "Slice",
     "Dictionary",
+    "NaN",
     "ExceptionCode",
     "StateInit",
     "assemble",
+    "Gas",
+    "ContinuationType",
+    "Continuation",
+    "SaveList",
     "VmState",
     "VmResult",
     "runvm_generic",
@@ -28,6 +33,20 @@ __all__ = [
 ]
 
 def runvm(code, stack, **kwargs) -> VmResult:
+    """
+    Invokes TVM with the current continuation cc initialized from the ``code`` slice and
+    the ``stack`` of values.
+
+    Optional parameters:
+     - capabilities: int
+     - c4: Cell
+     - c7: list
+     - gas_limit: int
+     - gas_credit: int
+     - trace: bool
+
+    Returns VmResult.    
+    """
     cc = Continuation(
         ContinuationType.create_ordinary(),
         code,
@@ -39,8 +58,8 @@ def runvm(code, stack, **kwargs) -> VmResult:
     regs = SaveList()
     capabilities = 0
     trace = False
-    gas_limit = 1000000000
-    gas_credit = 10000
+    gas_limit = 1_000_000_000
+    gas_credit = 10_000
     for key, value in kwargs.items():
         if key == "capabilities":
             capabilities = int(value)

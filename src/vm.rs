@@ -91,6 +91,7 @@ pub(crate) struct PyVmResult {
 }
 
 #[pyfunction]
+#[pyo3(signature = (state, capabilities = 0, trace = false))]
 pub(crate) fn runvm_generic(py: Python<'_>, state: PyVmState, capabilities: u64, trace: bool) -> PyResult<PyObject> {
     let mut engine = Engine::with_capabilities(capabilities).setup(
         state.cc.cont.code().clone(),

@@ -9,6 +9,12 @@ class Cell:
     """
     def __init__(self, *args) -> None: ...
 
+    @staticmethod
+    def empty() -> Cell:
+        """
+        Constructs empty cell.
+        """
+
     def write(self, flags: int) -> bytes:
         """
         Writes the cell to boc bytes.
@@ -74,10 +80,10 @@ class Slice:
         """
         Returns whether the data of the slice is empty.
         """
-    
+
     def remaining_bits(self) -> int:
         """
-        TODO
+        Returns the number of remaining bits of the slice.
         """
 
 class Builder:
@@ -193,8 +199,7 @@ class Dictionary:
 
 class NaN:
     """
-    TODO
-    Opaque type representing a special case of the TVM Integer type.
+    NaN is a special case of the TVM Integer type.
     """
     def __init__(self) -> None: ...
 
@@ -206,77 +211,93 @@ class Gas:
     def __init__(self, limit: int, credit: int) -> None: ...
 
 class ContinuationType:
+    """
+    Represents the type of TVM Continuation.
+    """
     variant: int
 
     def params_again(self) -> Slice:
-        """TODO"""
+        """Returns parameters of Again continuation type."""
     def params_pushint(self) -> int:
-        """TODO"""
+        """Returns parameters of PushInt continuation type."""
     def params_quit(self) -> int:
-        """TODO"""
+        """Returns parameters of Quit continuation type."""
     def params_repeat(self) -> Tuple[Slice, int]:
-        """TODO"""
+        """Returns parameters of Repeat continuation type."""
     def params_until(self) -> Slice:
-        """TODO"""
+        """Returns parameters of Until continuation type."""
     def params_while(self) -> Tuple[Slice, Slice]:
-        """TODO"""
+        """Returns parameters of While continuation type."""
 
     @staticmethod
     def create_again(body: Slice) -> ContinuationType:
-        """TODO"""
+        """Creates Again continuation type."""
     @staticmethod
     def create_trycatch() -> ContinuationType:
-        """TODO"""
+        """Creates TryCatch continuation type."""
     @staticmethod
     def create_ordinary() -> ContinuationType:
-        """TODO"""
+        """Creates Ordinary continuation type."""
     @staticmethod
     def create_pushint(value: int) -> ContinuationType:
-        """TODO"""
+        """Creates PushInt continuation type."""
     @staticmethod
     def create_quit(exit_code: int) -> ContinuationType:
-        """TODO"""
+        """Creates Quit continuation type."""
     @staticmethod
     def create_repeat(body: Slice, counter: int) -> ContinuationType:
-        """TODO"""
+        """Creates Repeat continuation type."""
     @staticmethod
     def create_until(body: Slice) -> ContinuationType:
-        """TODO"""
+        """Creates Until continuation type."""
     @staticmethod
     def create_while(body: Slice, cond: Slice) -> ContinuationType:
-        """TODO"""
+        """Creates While continuation type."""
     @staticmethod
     def create_excquit() -> ContinuationType:
-        """TODO"""
+        """Creates ExcQuit continuation type."""
 
 class SaveList:
+    """
+    SaveList contains the values of control registers to be restored before the execution of the code.
+    """
     def __init__(self) -> None: ...
     def get(self, index: int) -> object:
-        """TODO"""
+        """Gets the register value at the specified ``index``."""
     def put(self, index: int, value: object) -> None:
-        """TODO"""
+        """Puts ``value`` into the register at ``index``."""
 
 class Continuation:
     """
-    TODO
-    Opaque type representing a Continuation value in the output stack of TVM invocation.
+    Represents an "execution token" for TVM, which may be invoked (executed) later. As such,
+    it generalizes function addresses (i.e., function pointers and references), subroutine
+    return addresses, instruction pointer addresses, exception handler addresses, closures,
+    partial applications, anonymous functions, and so on.
     """
     typ: ContinuationType
     code: Slice
-    stack: list
+    stack: list[object]
     savelist: SaveList
     nargs: int
 
     def __init__(
         self,
-        typ: ContinuationType,
-        code: Slice,
-        stack: list,
-        savelist: SaveList,
-        nargs: int
+        typ: ContinuationType = ContinuationType.create_ordinary(),
+        code: Slice = Slice(Cell.empty()),
+        stack: list[object] = [],
+        savelist: SaveList = SaveList(),
+        nargs: int = -1
     ) -> None: ...
 
 class VmState:
+    """
+    State of the VM consists of:
+     - cc: current continuation,
+     - regs: register file of c0-c5 and c7,
+     - steps: a number of steps done by VM so far,
+     - gas: parameters of the gas including gas used,
+     - committed_c4/c5: 
+    """
     cc: Continuation
     regs: SaveList
     steps: int
@@ -287,29 +308,13 @@ class VmState:
     def __init__(self, cc: Continuation, regs: SaveList, gas: Gas) -> None: ...
 
 class VmResult:
+    """Result of TVM execution."""
     state: VmState
     exit_code: int
     exception_value: object
 
-def runvm_generic(state: VmState, capabilities: int, trace: bool) -> VmResult:
-    """TODO"""
-
-# def runvm(code: Slice, stack: list, **kwargs) -> VmResult:
-#     """
-#     TODO
-#     Invokes TVM with the current continuation cc initialized from the ``code`` slice and
-#     the ``stack`` of values.
-
-#     Optional parameters:
-#      - capabilities: int
-#      - c4: Cell
-#      - c7: list
-#      - gas_limit: int
-#      - gas_credit: int
-#      - trace: bool
-
-#     Returns VmResult.    
-#     """
+def runvm_generic(state: VmState, capabilities: int = 0, trace: bool = False) -> VmResult:
+    """Generic version of the runvm() function."""
 
 def assemble(code: str) -> Cell:
     """
