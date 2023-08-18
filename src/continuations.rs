@@ -77,15 +77,16 @@ impl PyContinuationType {
 
 // Must be in sync with python code
 enum ContinuationVariant {
-    Again    = 0,
-    TryCatch = 1,
-    Ordinary = 2,
-    PushInt  = 3,
-    Quit     = 4,
-    Repeat   = 5,
-    Until    = 6,
-    While    = 7,
-    ExcQuit  = 8,
+    Again       = 0,
+    TryCatch    = 1,
+    CatchRevert = 2,
+    Ordinary    = 3,
+    PushInt     = 4,
+    Quit        = 5,
+    Repeat      = 6,
+    Until       = 7,
+    While       = 8,
+    ExcQuit     = 9,
 }
 
 #[pymethods]
@@ -94,15 +95,16 @@ impl PyContinuationType {
     fn variant(&self) -> u8 {
         use ContinuationType::*;
         match self.typ {
-            AgainLoopBody(_)         => ContinuationVariant::Again    as u8,
-            TryCatch                 => ContinuationVariant::TryCatch as u8,
-            Ordinary                 => ContinuationVariant::Ordinary as u8,
-            PushInt(_)               => ContinuationVariant::PushInt  as u8,
-            Quit(_)                  => ContinuationVariant::Quit     as u8,
-            RepeatLoopBody(_, _)     => ContinuationVariant::Repeat   as u8,
-            UntilLoopCondition(_)    => ContinuationVariant::Until    as u8,
-            WhileLoopCondition(_, _) => ContinuationVariant::While    as u8,
-            ExcQuit                  => ContinuationVariant::ExcQuit  as u8,
+            AgainLoopBody(_)         => ContinuationVariant::Again       as u8,
+            TryCatch                 => ContinuationVariant::TryCatch    as u8,
+            CatchRevert(_)           => ContinuationVariant::CatchRevert as u8,
+            Ordinary                 => ContinuationVariant::Ordinary    as u8,
+            PushInt(_)               => ContinuationVariant::PushInt     as u8,
+            Quit(_)                  => ContinuationVariant::Quit        as u8,
+            RepeatLoopBody(_, _)     => ContinuationVariant::Repeat      as u8,
+            UntilLoopCondition(_)    => ContinuationVariant::Until       as u8,
+            WhileLoopCondition(_, _) => ContinuationVariant::While       as u8,
+            ExcQuit                  => ContinuationVariant::ExcQuit     as u8,
         }
     }
     fn params_again(&self) -> PyResult<PySlice> {
@@ -179,16 +181,18 @@ impl PyContinuationType {
         }
     }
     fn __str__(&self) -> PyResult<String> {
+        use ContinuationType::*;
         let str = match self.typ {
-            ContinuationType::AgainLoopBody(_) => "Again",
-            ContinuationType::TryCatch => "TryCatch",
-            ContinuationType::Ordinary => "Ordinary",
-            ContinuationType::PushInt(_) => "PushInt",
-            ContinuationType::Quit(_) => "Quit",
-            ContinuationType::RepeatLoopBody(_, _) => "Repeat",
-            ContinuationType::UntilLoopCondition(_) => "Until",
-            ContinuationType::WhileLoopCondition(_, _) => "While",
-            ContinuationType::ExcQuit => "ExcQuit",
+            AgainLoopBody(_)         => "Again",
+            TryCatch                 => "TryCatch",
+            CatchRevert(_)           => "CatchRevert",
+            Ordinary                 => "Ordinary",
+            PushInt(_)               => "PushInt",
+            Quit(_)                  => "Quit",
+            RepeatLoopBody(_, _)     => "Repeat",
+            UntilLoopCondition(_)    => "Until",
+            WhileLoopCondition(_, _) => "While",
+            ExcQuit                  => "ExcQuit",
         };
         Ok(str.to_string())
     }
