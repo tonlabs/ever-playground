@@ -29,8 +29,8 @@ impl PyGas {
 #[pymethods]
 impl PyGas {
     #[new]
-    fn create(limit: i64, credit: i64) -> Self {
-        Self::new(Gas::new(limit, credit, 1000000000, 10))
+    fn create(limit: i64, credit: i64, gas_limit_max: i64, gas_price: i64) -> Self {
+        Self::new(Gas::new(limit, credit, gas_limit_max, gas_price))
     }
     #[getter]
     fn limit(&self) -> i64 {

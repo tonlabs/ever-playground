@@ -43,6 +43,8 @@ def runvm(code, stack, **kwargs) -> VmResult:
      - c7: list
      - gas_limit: int
      - gas_credit: int
+     - gas_limit_max: int
+     - gas_price: int
      - trace: bool
 
     Returns VmResult.    
@@ -60,6 +62,8 @@ def runvm(code, stack, **kwargs) -> VmResult:
     trace = False
     gas_limit = 1_000_000_000
     gas_credit = 10_000
+    gas_limit_max = 1_000_000_000
+    gas_price = 10
     for key, value in kwargs.items():
         if key == "capabilities":
             capabilities = int(value)
@@ -73,10 +77,14 @@ def runvm(code, stack, **kwargs) -> VmResult:
             gas_limit = int(value)
         elif key == "gas_credit":
             gas_credit = int(value)
+        elif key == "gas_limit_max":
+            gas_limit_max = int(value)
+        elif key == "gas_price":
+            gas_price = int(value)
         else:
             raise Exception("Unknown parameter {}".format(key))
 
-    state = VmState(cc, regs, Gas(gas_limit, gas_credit))
+    state = VmState(cc, regs, Gas(gas_limit, gas_credit, gas_limit_max, gas_price))
     return runvm_generic(state, capabilities, trace)
 
 class ExceptionCode(Enum):
