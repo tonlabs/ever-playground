@@ -97,9 +97,13 @@ def test_ifjmp_perf_eval():
 def run_runcont():
     run(["python3", "examples/runcont.py"])
 
+def run_libraries():
+    run(["python3", "examples/libraries.py"])
+
 run_basics()
 run_runvm()
 run_runcont()
+run_libraries()
 test_recover_stake()
 test_testgiver()
 test_validator_elect_req()

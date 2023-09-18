@@ -157,6 +157,10 @@ impl PySlice {
     fn is_empty(&self) -> PyResult<bool> {
         Ok(self.slice.is_empty())
     }
+    fn skip(&mut self, bits: usize) -> PyResult<()> {
+        self.slice.move_by(bits)
+            .map_err(runtime_err)
+    }
     fn __richcmp__(&self, other: Self, op: CompareOp, py: Python<'_>) -> PyObject {
         match op {
             CompareOp::Eq => self.slice.eq(&other.slice).into_py(py),
@@ -289,6 +293,10 @@ impl PyDictionary {
     }
     fn add(mut slf: PyRefMut<Self>, key: PySlice, value: PySlice) -> PyResult<PyRefMut<Self>> {
         slf.map.set(key.slice, &value.slice).map_err(runtime_err)?;
+        Ok(slf)
+    }
+    fn add_ref(mut slf: PyRefMut<Self>, key: PySlice, value: PyCell) -> PyResult<PyRefMut<Self>> {
+        slf.map.setref(key.slice, &value.cell).map_err(runtime_err)?;
         Ok(slf)
     }
     fn add_kv_slice(mut slf: PyRefMut<Self>, key_bits: usize, mut slice: PySlice) -> PyResult<PyRefMut<Self>> {

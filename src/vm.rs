@@ -1,4 +1,4 @@
-use crate::{PyContinuation, PySaveList, convert_from_vm, runtime_err};
+use crate::{PyContinuation, PySaveList, convert_from_vm, runtime_err, PyDictionary};
 use pyo3::{
     prelude::*,
     exceptions::PyRuntimeError,
@@ -90,14 +90,15 @@ pub(crate) struct PyVmResult {
 }
 
 #[pyfunction]
-#[pyo3(signature = (state, capabilities = 0, trace = false))]
-pub(crate) fn runvm_generic(py: Python<'_>, state: PyVmState, capabilities: u64, trace: bool) -> PyResult<PyObject> {
+#[pyo3(signature = (state, capabilities = 0, trace = false, libs = Vec::new()))]
+pub(crate) fn runvm_generic(py: Python<'_>, state: PyVmState, capabilities: u64, trace: bool, libs: Vec<PyDictionary>) -> PyResult<PyObject> {
     let cc = state.cc.cont(py)?;
-    let mut engine = Engine::with_capabilities(capabilities).setup(
+    let mut engine = Engine::with_capabilities(capabilities).setup_with_libraries(
         cc.code().clone(),
         Some(state.regs.savelist),
         Some(cc.stack),
-        Some(state.gas.gas)
+        Some(state.gas.gas),
+        libs.iter().map(|dict| dict.map.clone()).collect::<Vec<_>>(),
     );
     if trace {
         engine.set_trace_callback(trace_callback);

@@ -1,6 +1,6 @@
 [package]
 name = "ever-playground"
-version = "0.7.5"
+version = "0.7.6"
 edition = "2021"
 
 [lib]
@@ -13,7 +13,7 @@ num-bigint = "0.4"
 pyo3 = { version = "0.19.2", features = ["extension-module", "num-bigint"] }
 rand = "0.7"
 
-ton_block = { git = "https://github.com/tonlabs/ever-block.git", tag = "1.9.89" }
-ton_types = { git = "https://github.com/tonlabs/ever-types.git", tag = "2.0.18" }
-ton_labs_assembler = { git = "https://github.com/tonlabs/ever-assembler.git", tag = "1.2.130" }
-ton_vm = { git = "https://github.com/tonlabs/ever-vm.git", tag = "1.8.192" }
+ton_block = { git = "https://github.com/tonlabs/ever-block.git", tag = "1.9.103" }
+ton_types = { git = "https://github.com/tonlabs/ever-types.git", tag = "2.0.28" }
+ton_labs_assembler = { git = "https://github.com/tonlabs/ever-assembler.git", tag = "1.4.12" }
+ton_vm = { git = "https://github.com/tonlabs/ever-vm.git", tag = "1.8.210" }

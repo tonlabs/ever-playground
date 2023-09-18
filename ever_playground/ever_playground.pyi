@@ -86,6 +86,11 @@ class Slice:
         Returns the number of remaining bits of the slice.
         """
 
+    def skip(self, bits: int):
+        """
+        Skips a number of bits.
+        """
+
 class Builder:
     """
     A TVM cell builder, or builder for short, is an “incomplete”
@@ -173,6 +178,11 @@ class Dictionary:
     def add(self, key: Slice, value: Slice) -> Dictionary:
         """
         Sets ``value`` for the given ``key``.
+        """
+
+    def add_ref(self, key: Slice, value: Cell) -> Dictionary:
+        """
+        Sets ``value`` for the given ``key`` as a cell reference.
         """
 
     def add_kv_slice(self, key_len: int, slice: Slice) -> Dictionary:

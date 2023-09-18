@@ -46,6 +46,7 @@ def runvm(code, stack, **kwargs) -> VmResult:
      - gas_limit_max: int
      - gas_price: int
      - trace: bool
+     - libs: list
 
     Returns VmResult.    
     """
@@ -64,6 +65,7 @@ def runvm(code, stack, **kwargs) -> VmResult:
     gas_credit = 10_000
     gas_limit_max = 1_000_000_000
     gas_price = 10
+    libs = []
     for key, value in kwargs.items():
         if key == "capabilities":
             capabilities = int(value)
@@ -81,11 +83,13 @@ def runvm(code, stack, **kwargs) -> VmResult:
             gas_limit_max = int(value)
         elif key == "gas_price":
             gas_price = int(value)
+        elif key == "libs":
+            libs = value
         else:
             raise Exception("Unknown parameter {}".format(key))
 
     state = VmState(cc, regs, Gas(gas_limit, gas_credit, gas_limit_max, gas_price))
-    return runvm_generic(state, capabilities, trace)
+    return runvm_generic(state, capabilities, trace, libs)
 
 class ExceptionCode(Enum):
     """TVM exception code."""
