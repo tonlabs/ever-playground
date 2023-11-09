@@ -78,6 +78,15 @@ impl PyCell {
         let hash = self.cell.repr_hash();
         BigUint::from_bytes_be(hash.as_slice())
     }
+    fn repr_depth(&self) -> usize {
+        self.cell.repr_depth() as usize
+    }
+    fn level(&self) -> usize {
+        self.cell.level() as usize
+    }
+    fn depth(&self, index: usize) -> usize {
+        self.cell.depth(index) as usize
+    }
     fn cells_count(&self) -> PyResult<usize> {
         self.cell.count_cells(usize::MAX).map_err(runtime_err)
     }

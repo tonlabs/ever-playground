@@ -35,6 +35,21 @@ class Cell:
         Returns the representation hash of the cell.
         """
 
+    def repr_depth(self) -> int:
+        """
+        Returns the representation depth of the cell.
+        """
+
+    def level(self) -> int:
+        """
+        Returns level of the cell.
+        """
+
+    def depth(self, index: int) -> int:
+        """
+        Returns depth of the cell.
+        """
+
     def cells_count(self) -> int:
         """
         Returns the total cells count.
@@ -218,7 +233,7 @@ class Gas:
     used: int
     credit: int
 
-    def __init__(self, limit: int, credit: int) -> None: ...
+    def __init__(self, limit: int, credit: int, gas_limit_max: int, gas_price: int) -> None: ...
 
 class ContinuationType:
     """
@@ -323,7 +338,7 @@ class VmResult:
     exit_code: int
     exception_value: object
 
-def runvm_generic(state: VmState, capabilities: int = 0, trace: bool = False) -> VmResult:
+def runvm_generic(state: VmState, capabilities: int = 0, trace: bool = False, libs: list = []) -> VmResult:
     """Generic version of the runvm() function."""
 
 def assemble(code: str) -> Cell:

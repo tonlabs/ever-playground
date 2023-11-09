@@ -55,6 +55,9 @@ dict = D.deserialize(288, S(dict_cell1))
 empty = C("")
 expect(empty, B().finalize())
 expect(0x96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7, empty.repr_hash())
+expect(0, empty.repr_depth())
+expect(0, empty.level())
+expect(0, empty.depth(0))
 
 c = \
 C("c_",

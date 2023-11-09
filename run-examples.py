@@ -6,7 +6,7 @@ import os
 
 from ever_playground import Cell
 
-ton_src = "/tonlabs/ton"
+ton_src = "/e/ton"
 ton_build = ton_src + "/build"
 fift = [ton_build + "/crypto/fift", "-I", ton_src + "/crypto/fift/lib", "-s"]
 
